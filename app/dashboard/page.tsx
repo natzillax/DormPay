@@ -15,49 +15,115 @@ export default function DashboardPage() {
     const { data: session, status } = useSession()
     const router = useRouter()
 
-    const [invoice, setInvoice] = useState<any>(null)
+    const [invoice, setInvoice] = useState<any>(null) // บิลปัจจุบันที่ต้องจ่าย
+    const [paidInvoices, setPaidInvoices] = useState<any[]>([]) // 📜 ประวัติบิลที่จ่ายแล้ว
     const [loading, setLoading] = useState(true)
-    const [file, setFile] = useState<File | null>(null)
     const [uploading, setUploading] = useState(false)
+    const [file, setFile] = useState<File | null>(null)
 
-    // 🛠️ ฟังก์ชันสำหรับส่งสลิปไปที่ Supabase
-    const handleUploadSlip = async () => {
-        if (!file || !invoice) return alert("กรุณาเลือกรูปภาพสลิปก่อนจ้า!")
+    // 1. ฟังก์ชันดึงข้อมูลบิล (เวอร์ชันแปลง User ID เป็น Room ID เพื่อผูกข้อมูลกับห้องพักถาวร)
+    const fetchInvoiceData = async (userId: string) => {
+        setLoading(true)
+        try {
+            // ขั้นตอนที่ A: วิ่งไปถามตาราง users ว่า "User ID ของคนที่ล็อกอินคนนี้ พักอยู่ห้อง ID อะไร"
+            const { data: userData, error: userError } = await supabase
+                .from("users")
+                .select("room_id") // 🎯 ดึง Room ID ของแท้ที่คนนี้พักอยู่
+                .eq("id", userId)
+                .maybeSingle()
+
+            if (userError) throw userError
+
+            // ถ้าผู้ใช้งานคนนี้ไม่ได้ผูกกับห้องพักไหนเลย ให้หยุดทำงาน
+            if (!userData || !userData.room_id) {
+                console.warn("⚠️ ไม่พบ Room ID ที่ผูกกับ User ID นี้");
+                setInvoice(null);
+                setPaidInvoices([]);
+                return;
+            }
+
+            const realRoomId = userData.room_id
+            console.log("🎯 พบ Room ID ของแท้ที่ผูกกับห้องพักแล้ว:", realRoomId)
+
+            // ขั้นตอนที่ B: เอา realRoomId ที่ได้ ไปดึงบิลปัจจุบันที่ยังจ่ายไม่เสร็จ (PENDING, WAITING)
+            const { data: currentData, error: currentError } = await supabase
+                .from("invoices")
+                .select("*")
+                .eq("room_id", realRoomId) // 🟢 ค้นหาผ่าน Room ID ของตาราง rooms เสมอ
+                .in("status", ["PENDING", "WAITING"])
+                .order("created_at", { ascending: false })
+
+            if (currentError) throw currentError
+
+            if (currentData && currentData.length > 0) {
+                setInvoice(currentData[0])
+            } else {
+                setInvoice(null)
+            }
+
+            // ขั้นตอนที่ C: เอา realRoomId ไปดึงประวัติบิลย้อนหลังที่จ่ายเงินเสร็จแล้ว (PAID)
+            const { data: historyData, error: historyError } = await supabase
+                .from("invoices")
+                .select("*")
+                .eq("room_id", realRoomId) // 🟢 ค้นหาผ่าน Room ID เช่นกัน
+                .eq("status", "PAID")
+                .order("year", { ascending: false })
+                .order("month", { ascending: false })
+
+            if (historyError) throw historyError
+            setPaidInvoices(historyData || [])
+
+        } catch (error: any) {
+            console.error("❌ เกิดข้อผิดพลาดในการดึงข้อมูลบิล:", error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // 2. ฟังก์ชันอัปโหลดสลิปเงินโอน
+    const handleUploadSlip = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!file || !invoice) return alert("กรุณาเลือกไฟล์สลิปก่อนนะจ๊ะ!")
 
         setUploading(true)
         try {
-            // 1. ตั้งชื่อไฟล์รูปภาพไม่ให้ซ้ำกัน
             const fileExt = file.name.split('.').pop()
-            const fileName = `slip_${invoice.id}_${Date.now()}.${fileExt}`
+            const fileName = `${invoice.id}-${Date.now()}.${fileExt}`
+            const filePath = `slips/${fileName}`
 
-            // 2. อัปโหลดไฟล์ขึ้นไปที่ Supabase Storage ถัง 'slips'
-            const { data: storageData, error: storageError } = await supabase.storage
-                .from('slips')
-                .upload(fileName, file, { upsert: true })
+            // อัปโหลดเข้า Storage Bucket ชื่อ 'slips'
+            const { error: uploadError } = await supabase.storage
+                .from("slips")
+                .upload(filePath, file)
 
-            if (storageError) throw storageError
+            if (uploadError) throw uploadError
 
-            // 3. ดึงลิงก์ URL ของรูปภาพ
-            const { data: urlData } = supabase.storage
-                .from('slips')
-                .getPublicUrl(fileName)
+            // ดึง Public URL ของไฟล์สลิปที่เพิ่งอัปโหลดสำเร็จ
+            const { data: { publicUrl } } = supabase.storage
+                .from("slips")
+                .getPublicUrl(filePath)
 
-            // 4. อัปเดตสถานะบิลในตารางเป็น WAITING
+            // อัปเดตตาราง invoices ใส่ลิงก์สลิป และเปลี่ยนสถานะเป็น WAITING
             const { error: updateError } = await supabase
-                .from('invoices')
+                .from("invoices")
                 .update({
-                    status: 'WAITING',
-                    slip_url: urlData.publicUrl
+                    slip_url: publicUrl,
+                    status: "WAITING"
                 })
-                .eq('id', invoice.id)
+                .eq("id", invoice.id)
 
             if (updateError) throw updateError
 
             alert("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะจ๊ะ 🎉")
-            window.location.reload()
+            setFile(null)
+
+            // โหลดข้อมูลใหม่ในหน้านี้ทันที
+            if (session?.user?.id) {
+                fetchInvoiceData(session.user.id)
+            }
 
         } catch (error: any) {
-            alert("เกิดข้อผิดพลาด: " + error.message)
+            alert("เกิดข้อผิดพลาดในการอัปโหลด: " + error.message)
         } finally {
             setUploading(false)
         }
@@ -67,138 +133,151 @@ export default function DashboardPage() {
         if (status === "unauthenticated") {
             router.push("/login")
         }
-
-        if (status === "authenticated" && session?.user?.email) {
-            const fetchInvoiceData = async () => {
-                // 1. ดึงข้อมูลห้องพักผ่านอีเมลของผู้เช่า
-                const { data: userData, error: userError } = await supabase
-                    .from("users")
-                    .select("room_id")
-                    .eq("email", session.user?.email)
-                    .single()
-
-                if (userError || !userData?.room_id) {
-                    console.log("❌ ไม่พบ room_id ของอีเมลนี้:", userError)
-                    setLoading(false)
-                    return
-                }
-
-                // 2. ดึงใบแจ้งหนี้ล่าสุด
-                const { data, error } = await supabase
-                    .from("invoices")
-                    .select(`
-                        *,
-                        rooms ( room_number, price )
-                    `)
-                    .eq("room_id", userData.room_id)
-                    .order("created_at", { ascending: false })
-                    .limit(1)
-                    .single()
-
-                if (!error && data) {
-                    setInvoice(data)
-                    console.log("👉 ข้อมูลบิลที่ดึงได้จาก Supabase คือ:", data) // 👈 เพิ่มบรรทัดนี้
-                }
-                setLoading(false)
-            }
-
-            fetchInvoiceData()
+        if (status === "authenticated" && session?.user?.id) {
+            fetchInvoiceData(session.user.id)
         }
     }, [status, session, router])
 
     if (status === "loading" || loading) {
-        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพัก...</div>
+        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพักของคุณ...</div>
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 text-black">
+        <div className="min-h-screen bg-gray-100 p-6 text-black">
             <div className="mx-auto max-w-4xl">
 
-                {/* Header โซนบน */}
-                <div className="flex items-center justify-between border-b pb-4 mb-6">
+                {/* ส่วนหัวของหน้าจอ */}
+                <div className="flex items-center justify-between border-b pb-4 mb-6 bg-white p-6 rounded-xl shadow-sm">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-800">ยินดีต้อนรับ {session?.user?.name}</h1>
-                        <p className="text-gray-500">ระบบจัดการค่าเช่าและบิลออนไลน์</p>
+                        <h1 className="text-2xl font-bold text-gray-800">🏢 ยินดีต้อนรับสู่ DormPay</h1>
+                        <p className="text-sm text-gray-500">ห้องพัก: {session?.user?.name || "กำลังโหลด..."}</p>
                     </div>
                     <button
                         onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="rounded-md bg-red-500 px-4 py-2 font-semibold text-white hover:bg-red-600 transition"
+                        className="rounded-md bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition"
                     >
                         ออกจากระบบ
                     </button>
                 </div>
 
-                {/* แสดงข้อมูลบิล */}
-                {invoice ? (
-                    <div className="grid gap-6 md:grid-cols-3">
+                {/* บล็อกหลักแสดงบิลปัจจุบัน */}
+                <div className="grid gap-6 md:grid-cols-2">
 
-                        {/* การ์ดสรุปยอดที่ต้องจ่าย */}
-                        <div className="md:col-span-2 rounded-xl bg-white p-6 shadow-sm border border-gray-100">
-                            <h2 className="text-xl font-bold mb-4 text-gray-700">🧾 ใบแจ้งหนี้ประจำเดือน {invoice.month}/{invoice.year}</h2>
-
-                            <div className="space-y-3 border-b pb-4">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">ค่าห้องพักปกติ</span>
+                    {/* ฝั่งซ้าย: รายละเอียดค่าใช้จ่าย */}
+                    <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
+                        <h2 className="text-lg font-bold mb-4 text-gray-700">📅 ยอดบิลที่ต้องชำระ</h2>
+                        {!invoice ? (
+                            <div className="text-green-600 font-semibold py-6 text-center bg-green-50 rounded-lg">
+                                🎉 เยี่ยมมาก! เดือนนี้คุณไม่มียอดค้างชำระแล้ว
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-sm border-b pb-2">
+                                    <span className="text-gray-500">ประจำเดือน:</span>
+                                    <span className="font-bold text-gray-800">{invoice.month}/{invoice.year}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-500">ค่าห้องพักปกติ:</span>
                                     <span className="font-semibold">฿{invoice.room_price.toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">ค่าน้ำประปา</span>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-500">ค่าน้ำประปา:</span>
                                     <span className="font-semibold">฿{invoice.water_price.toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-500">ค่าไฟฟ้า</span>
+                                <div className="flex justify-between text-sm border-b pb-2">
+                                    <span className="text-gray-500">ค่าไฟฟ้า:</span>
                                     <span className="font-semibold">฿{invoice.electric_price.toLocaleString()}</span>
                                 </div>
+                                <div className="flex justify-between text-lg font-bold pt-2 text-blue-600">
+                                    <span>ยอดรวมทั้งหมด:</span>
+                                    <span>฿{invoice.total_amount.toLocaleString()}</span>
+                                </div>
                             </div>
+                        )}
+                    </div>
 
-                            <div className="flex justify-between pt-4 items-center">
-                                <span className="text-lg font-bold text-gray-800">ยอดรวมทั้งหมดที่ต้องชำระ:</span>
-                                <span className="text-3xl font-extrabold text-blue-600">฿{invoice.total_amount.toLocaleString()}</span>
-                            </div>
+                    {/* ฝั่งขวา: แนบหลักฐานการโอนเงิน */}
+                    <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200 flex flex-col justify-between">
+                        <div>
+                            <h2 className="text-lg font-bold mb-2 text-gray-700">💰 ช่องทางการชำระเงิน</h2>
+                            <p className="text-xs text-gray-500 mb-4">ธนาคารกสิกรไทย • เลขบัญชี: 000-0-00000-0 • ชื่อบัญชี: หอพัก DormPay</p>
                         </div>
 
-                        {/* การ์ดสถานะและการชำระเงิน */}
-                        <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-700 mb-2">สถานะบิล</h3>
-                                <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${invoice.status === 'PAID' ? 'bg-green-100 text-green-700' :
-                                    invoice.status === 'WAITING' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                                    }`}>
-                                    {invoice.status === 'PAID' ? 'ชำระเงินสำเร็จแล้ว' :
-                                        invoice.status === 'WAITING' ? '⏳ รอเจ้าของหอตรวจสอบ' : '🔴 ค้างชำระเงิน'}
-                                </span>
-
-                                <p className="text-xs text-gray-400 mt-4">กำหนดชำระก่อน: {new Date(invoice.due_date).toLocaleDateString('th-TH')}</p>
-                            </div>
-
-                            {/* แสดงฟอร์มแนบสลิป เฉพาะตอนที่บิลยังค้างชำระ (PENDING) เท่านั้น */}
-                            {invoice.status === 'PENDING' && (
-                                <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-4 bg-gray-50">
-                                    <h4 className="text-sm font-semibold text-gray-700 mb-2">📸 แนบหลักฐานการโอนเงิน</h4>
+                        {invoice ? (
+                            invoice.status === "WAITING" ? (
+                                <div className="text-center py-6 bg-blue-50 text-blue-600 rounded-lg border border-blue-200 font-semibold text-sm">
+                                    ⏳ ส่งสลิปแล้ว รอเจ้าของหอตรวจสอบความถูกต้องนะจ๊ะ
+                                </div>
+                            ) : (
+                                <form onSubmit={handleUploadSlip} className="space-y-4">
+                                    <label className="block text-sm font-medium text-gray-700">แนบภาพสลิปเงินโอน</label>
                                     <input
                                         type="file"
                                         accept="image/*"
                                         onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                        required
                                     />
-
                                     <button
-                                        onClick={handleUploadSlip}
+                                        type="submit"
                                         disabled={uploading}
-                                        className="mt-4 w-full rounded-lg bg-green-600 py-2.5 font-bold text-white hover:bg-green-700 transition disabled:bg-gray-400"
+                                        className="w-full rounded-md bg-green-600 py-2.5 font-bold text-white hover:bg-green-700 transition shadow-sm disabled:bg-gray-400 text-sm"
                                     >
-                                        {uploading ? "กำลังอัปโหลด..." : "🚀 ยืนยันการส่งสลิป"}
+                                        {uploading ? "กำลังส่งสลิป..." : "🚀 ยืนยันการส่งสลิป"}
                                     </button>
-                                </div>
-                            )}
-                        </div>
+                                </form>
+                            )
+                        ) : (
+                            <div className="text-center py-6 text-gray-400 text-sm">
+                                ไม่มีบิลค้างชำระ ไม่ต้องส่งสลิปจ้า
+                            </div>
+                        )}
+                    </div>
+                </div>
 
-                    </div>
-                ) : (
-                    <div className="rounded-xl bg-white p-12 text-center shadow-sm border border-gray-100">
-                        <p className="text-lg text-gray-500">🎉 ยินดีด้วย เดือนนี้คุณยังไม่มีบิลค้างชำระ!</p>
-                    </div>
-                )}
+                {/* 📜 ตารางประวัติการชำระเงินย้อนหลัง */}
+                <div className="mt-8 rounded-xl bg-white p-6 shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
+                        📜 ประวัติใบแจ้งหนี้และการชำระเงินย้อนหลัง
+                    </h3>
+
+                    {paidInvoices.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed text-sm">
+                            ยังไม่มีประวัติการชำระเงินในระบบของคุณ
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-500 uppercase">
+                                        <th className="p-3">ประจำเดือน</th>
+                                        <th className="p-3">ค่าห้อง</th>
+                                        <th className="p-3">ค่าน้ำ</th>
+                                        <th className="p-3">ค่าไฟ</th>
+                                        <th className="p-3">ยอดรวมทั้งหมด</th>
+                                        <th className="p-3 text-center">放สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y text-sm">
+                                    {paidInvoices.map((hist) => (
+                                        <tr key={hist.id} className="hover:bg-gray-50 transition text-gray-600">
+                                            <td className="p-3 font-semibold text-gray-800">เดือน {hist.month}/{hist.year}</td>
+                                            <td className="p-3">฿{hist.room_price.toLocaleString()}</td>
+                                            <td className="p-3">฿{hist.water_price.toLocaleString()}</td>
+                                            <td className="p-3">฿{hist.electric_price.toLocaleString()}</td>
+                                            <td className="p-3 font-bold text-gray-800">฿{hist.total_amount.toLocaleString()}</td>
+                                            <td className="p-3 text-center">
+                                                <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                                                    🟢 จ่ายแล้วสำเร็จ
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
 
             </div>
         </div>
