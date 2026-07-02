@@ -13,7 +13,7 @@ const supabase = createClient(
 export default function LandlordPage() {
     const { data: session, status } = useSession()
     const router = useRouter()
-    
+
     const [invoices, setInvoices] = useState<any[]>([])
     const [rooms, setRooms] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
@@ -32,7 +32,7 @@ export default function LandlordPage() {
     // 💧 State สำหรับคำนวณน้ำ (เก็บค่าเลขมิเตอร์)
     const [waterPrev, setWaterPrev] = useState("")
     const [waterCurr, setWaterCurr] = useState("")
-    
+
     // ⚡ State สำหรับคำนวณไฟ (เก็บค่าเลขมิเตอร์)
     const [electricPrev, setElectricPrev] = useState("")
     const [electricCurr, setElectricCurr] = useState("")
@@ -64,7 +64,7 @@ export default function LandlordPage() {
     // 3. ฟังก์ชันกดอนุมัติบิล (เปลี่ยนเป็น PAID)
     const handleApprove = async (invoiceId: string) => {
         if (!confirm("คุณตรวจสอบสลิปยอดเงินถูกต้อง และต้องการอนุมัติบิลนี้ใช่หรือไม่?")) return
-        
+
         setUpdatingId(invoiceId)
         const { error } = await supabase
             .from("invoices")
@@ -87,9 +87,9 @@ export default function LandlordPage() {
         setUpdatingId(invoiceId)
         const { error } = await supabase
             .from("invoices")
-            .update({ 
-                status: "PENDING", 
-                slip_url: null     
+            .update({
+                status: "PENDING",
+                slip_url: null
             })
             .eq("id", invoiceId)
 
@@ -114,7 +114,39 @@ export default function LandlordPage() {
 
     const totalAmount = rPrice + wPrice + ePrice
 
-    // 4. ฟังก์ชันสร้างใบแจ้งหนี้ใบใหม่ส่งให้ผู้เช่า
+    // 📩 ฟังก์ชันจำลองการส่งอีเมลแจ้งเตือนผู้เช่า (สามารถเชื่อมต่อ API เช่น Nodemailer, Resend หรือ SendGrid ได้ตรงนี้)
+    const sendEmailNotification = async (email: string, roomNumber: string, amount: number, currentMonth: number) => {
+        try {
+            console.log(`📧 กำลังส่งอีเมลแจ้งค่าหอไปยัง: ${email}`);
+
+            // 📝 ตัวอย่างข้อมูลที่เราจะส่ง (Subject & Body)
+            const subject = `📢 แจ้งยอดชำระค่าหอพัก ห้อง ${roomNumber} ประจำเดือน ${currentMonth}`;
+            const message = `เรียน ผู้เช่าห้อง ${roomNumber}\n\nขณะนี้บิลค่าหอพักประจำเดือนได้ออกเรียบร้อยแล้ว\nยอดเงินที่ต้องชำระสุทธิ: ฿${amount.toLocaleString()} บาท\n\nกรุณาเข้าสู่ระบบ DormPay เพื่อตรวจสอบรายละเอียดและแนบสลิปหลักฐานการโอนเงินภายใน 7 วันค่ะ\n\nขอบคุณค่ะ\nระบบ DormPay Admin`;
+
+            // 🔥 ยิงไปหาหลังบ้าน Next.js เพื่อส่งเมลจริง
+            const response = await fetch('/api/sendEmail', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: email,
+                    subject: subject,
+                    text: message
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                console.log("✅ อีเมลถูกส่งไปยังผู้เช่าเรียบร้อยแล้วจริงๆ!", result);
+            } else {
+                console.error("❌ ส่งเมลไม่สำเร็จจากเซิร์ฟเวอร์:", result.error);
+            }
+        } catch (err: any) {
+            console.error("❌ เกิดข้อผิดพลาดตอนเชื่อมต่อ API ส่งเมล:", err.message);
+        }
+    }
+
+    // 4. ฟังก์ชันสร้างใบแจ้งหนี้ใบใหม่ส่งให้ผู้เช่า (เวอร์ชันเพิ่มระบบส่งอีเมล)
     const handleCreateInvoice = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedRoomId) return alert("กรุณาเลือกห้องพักก่อนจ้า!")
@@ -125,9 +157,22 @@ export default function LandlordPage() {
         try {
             if (!targetRoom) throw new Error("ไม่พบข้อมูลห้องพักที่เลือก")
 
+            // 🔍 1. ไปดึงข้อมูลอีเมลของผู้เช่าห้องนี้มาจากตาราง users (หรือตารางที่คุณใช้เก็บข้อมูลผู้เช่า)
+            // สมมติว่าในตาราง users มีคอลัมน์ room_id ผูกอยู่กับห้องพัก
+            const { data: userData, error: userError } = await supabase
+                .from("users")
+                .select("email, name")
+                .eq("room_id", selectedRoomId)
+                .single(); // ดึงมาแค่คนเดียวที่เป็นผู้เช่าห้องนี้
+
+            if (userError) {
+                console.warn("⚠️ ไม่พบอีเมลผู้เช่าสำหรับห้องนี้ หรือยังไม่มีผู้เช่าเข้าอยู่:", userError.message);
+            }
+
             const dueDate = new Date()
             dueDate.setDate(dueDate.getDate() + 7)
 
+            // 2. บันทึกบิลลงตาราง invoices
             const { error } = await supabase
                 .from("invoices")
                 .insert([{
@@ -144,8 +189,14 @@ export default function LandlordPage() {
 
             if (error) throw error
 
-            alert(`สร้างบิลห้อง ${targetRoom.room_number} ประจำเดือน ${month}/${year} สำเร็จแล้ว! ระบบคำนวณเงินให้อัตโนมัติ 🚀`)
-            
+            // 🎉 3. ถ้าระบบพบอีเมลผู้เช่า ให้ทำการส่งอีเมลแจ้งเตือนทันที!
+            if (userData && userData.email) {
+                await sendEmailNotification(userData.email, targetRoom.room_number, totalAmount, Number(month));
+                alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จ และส่งอีเมลแจ้งเตือนไปยัง ${userData.email} เรียบร้อยแล้ว! 🚀`);
+            } else {
+                alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จแล้ว! (แต่ไม่ได้ส่งเมลเนื่องจากไม่พบอีเมลผู้เช่าผูกกับห้องนี้) 🚀`);
+            }
+
             // ล้างฟอร์มมิเตอร์หลังจากบันทึกสำเร็จ
             setWaterPrev("")
             setWaterCurr("")
@@ -175,7 +226,7 @@ export default function LandlordPage() {
     return (
         <div className="min-h-screen bg-gray-100 p-6 text-black">
             <div className="mx-auto max-w-5xl">
-                
+
                 {/* Header ส่วนบน */}
                 <div className="flex items-center justify-between border-b pb-4 mb-6 bg-white p-6 rounded-xl shadow-sm">
                     <div>
@@ -194,13 +245,13 @@ export default function LandlordPage() {
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200 mb-6">
                     <h2 className="text-lg font-bold mb-4 text-gray-700">📝 ออกใบแจ้งหนี้ประจำเดือนใหม่ (ระบบคํานวณมิเตอร์อัตโนมัติ)</h2>
                     <form onSubmit={handleCreateInvoice} className="space-y-4 text-sm">
-                        
+
                         <div className="grid gap-4 sm:grid-cols-3">
                             {/* เลือกห้องพัก */}
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">เลือกห้องพัก</label>
-                                <select 
-                                    value={selectedRoomId} 
+                                <select
+                                    value={selectedRoomId}
                                     onChange={(e) => setSelectedRoomId(e.target.value)}
                                     className="w-full rounded-lg border p-2 bg-white border-gray-300"
                                     required
@@ -215,8 +266,8 @@ export default function LandlordPage() {
                             {/* เดือน */}
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">เดือน</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     min="1" max="12"
                                     value={month}
                                     onChange={(e) => setMonth(Number(e.target.value))}
@@ -228,8 +279,8 @@ export default function LandlordPage() {
                             {/* ปี */}
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     value={year}
                                     onChange={(e) => setYear(Number(e.target.value))}
                                     className="w-full rounded-lg border p-2 border-gray-300"
@@ -252,9 +303,9 @@ export default function LandlordPage() {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
                                         <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งก่อน</label>
-                                        <input 
-                                            type="number" 
-                                            placeholder="ครั้งก่อน" 
+                                        <input
+                                            type="number"
+                                            placeholder="ครั้งก่อน"
                                             value={waterPrev}
                                             onChange={(e) => setWaterPrev(e.target.value)}
                                             className="w-full rounded-lg border p-2 bg-white border-gray-300"
@@ -263,9 +314,9 @@ export default function LandlordPage() {
                                     </div>
                                     <div>
                                         <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งนี้</label>
-                                        <input 
-                                            type="number" 
-                                            placeholder="ครั้งนี้" 
+                                        <input
+                                            type="number"
+                                            placeholder="ครั้งนี้"
                                             value={waterCurr}
                                             onChange={(e) => setWaterCurr(e.target.value)}
                                             className="w-full rounded-lg border p-2 bg-white border-gray-300"
@@ -284,9 +335,9 @@ export default function LandlordPage() {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
                                         <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งก่อน</label>
-                                        <input 
-                                            type="number" 
-                                            placeholder="ครั้งก่อน" 
+                                        <input
+                                            type="number"
+                                            placeholder="ครั้งก่อน"
                                             value={electricPrev}
                                             onChange={(e) => setElectricPrev(e.target.value)}
                                             className="w-full rounded-lg border p-2 bg-white border-gray-300"
@@ -295,9 +346,9 @@ export default function LandlordPage() {
                                     </div>
                                     <div>
                                         <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งนี้</label>
-                                        <input 
-                                            type="number" 
-                                            placeholder="ครั้งนี้" 
+                                        <input
+                                            type="number"
+                                            placeholder="ครั้งนี้"
                                             value={electricCurr}
                                             onChange={(e) => setElectricCurr(e.target.value)}
                                             className="w-full rounded-lg border p-2 bg-white border-gray-300"
@@ -359,9 +410,9 @@ export default function LandlordPage() {
                                             <td className="p-3 font-semibold text-gray-800">฿{inv.total_amount.toLocaleString()}</td>
                                             <td className="p-3">
                                                 {inv.slip_url ? (
-                                                    <a 
-                                                        href={inv.slip_url} 
-                                                        target="_blank" 
+                                                    <a
+                                                        href={inv.slip_url}
+                                                        target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="inline-flex items-center gap-1 rounded bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition border border-blue-200"
                                                     >
