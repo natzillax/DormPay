@@ -19,13 +19,23 @@ export default function LandlordPage() {
     const [loading, setLoading] = useState(true)
     const [updatingId, setUpdatingId] = useState<string | null>(null)
 
+    // 💰 กำหนดราคาค่าน้ำค่าไฟต่อหน่วยไว้ตรงนี้ (สามารถแก้ไขตัวเลขได้ตามต้องการ)
+    const WATER_RATE = 18;   // ค่าน้ำหน่วยละ 18 บาท
+    const ELECTRIC_RATE = 7; // ค่าไฟหน่วยละ 7 บาท
+
     // --- State สำหรับฟอร์มสร้างบิลใหม่ ---
     const [selectedRoomId, setSelectedRoomId] = useState("")
-    const [waterPrice, setWaterPrice] = useState("")
-    const [electricPrice, setElectricPrice] = useState("")
     const [month, setMonth] = useState(new Date().getMonth() + 1)
     const [year, setYear] = useState(new Date().getFullYear())
     const [creating, setCreating] = useState(false)
+
+    // 💧 State สำหรับคำนวณน้ำ (เก็บค่าเลขมิเตอร์)
+    const [waterPrev, setWaterPrev] = useState("")
+    const [waterCurr, setWaterCurr] = useState("")
+    
+    // ⚡ State สำหรับคำนวณไฟ (เก็บค่าเลขมิเตอร์)
+    const [electricPrev, setElectricPrev] = useState("")
+    const [electricCurr, setElectricCurr] = useState("")
 
     // 1. ฟังก์ชันดึงใบแจ้งหนี้ทั้งหมดที่รอการตรวจสอบ (WAITING)
     const fetchWaitingInvoices = async () => {
@@ -78,8 +88,8 @@ export default function LandlordPage() {
         const { error } = await supabase
             .from("invoices")
             .update({ 
-                status: "PENDING", // ดีดสถานะกลับไปค้างชำระ
-                slip_url: null     // ลบลิงก์สลิปเก่าออกเพื่อให้ปุ่มอัปโหลดฝั่งคนเช่าโผล่ใหม่
+                status: "PENDING", 
+                slip_url: null     
             })
             .eq("id", invoiceId)
 
@@ -92,20 +102,28 @@ export default function LandlordPage() {
         setUpdatingId(null)
     }
 
+    // 🧮 ส่วนคำนวณจำนวนหน่วยและยอดเงิน Real-time บนหน้าจอ
+    const targetRoom = rooms.find(r => r.id === selectedRoomId)
+    const rPrice = targetRoom ? Number(targetRoom.price) : 0
+
+    const waterUnits = Math.max(0, Number(waterCurr) - Number(waterPrev))
+    const wPrice = waterUnits * WATER_RATE
+
+    const electricUnits = Math.max(0, Number(electricCurr) - Number(electricPrev))
+    const ePrice = electricUnits * ELECTRIC_RATE
+
+    const totalAmount = rPrice + wPrice + ePrice
+
     // 4. ฟังก์ชันสร้างใบแจ้งหนี้ใบใหม่ส่งให้ผู้เช่า
     const handleCreateInvoice = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!selectedRoomId || !waterPrice || !electricPrice) return alert("กรุณากรอกข้อมูลให้ครบถ้วนก่อนจ้า!")
+        if (!selectedRoomId) return alert("กรุณาเลือกห้องพักก่อนจ้า!")
+        if (Number(waterCurr) < Number(waterPrev)) return alert("❌ เลขมิเตอร์น้ำครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้นะครับ")
+        if (Number(electricCurr) < Number(electricPrev)) return alert("❌ เลขมิเตอร์ไฟครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้นะครับ")
 
         setCreating(true)
         try {
-            const targetRoom = rooms.find(r => r.id === selectedRoomId)
             if (!targetRoom) throw new Error("ไม่พบข้อมูลห้องพักที่เลือก")
-
-            const wPrice = Number(waterPrice)
-            const ePrice = Number(electricPrice)
-            const rPrice = Number(targetRoom.price)
-            const total = rPrice + wPrice + ePrice
 
             const dueDate = new Date()
             dueDate.setDate(dueDate.getDate() + 7)
@@ -117,7 +135,7 @@ export default function LandlordPage() {
                     room_price: rPrice,
                     water_price: wPrice,
                     electric_price: ePrice,
-                    total_amount: total,
+                    total_amount: totalAmount,
                     month: Number(month),
                     year: Number(year),
                     status: "PENDING",
@@ -126,10 +144,14 @@ export default function LandlordPage() {
 
             if (error) throw error
 
-            alert(`สร้างบิลห้อง ${targetRoom.room_number} ประจำเดือน ${month}/${year} สำเร็จแล้ว! 🚀`)
+            alert(`สร้างบิลห้อง ${targetRoom.room_number} ประจำเดือน ${month}/${year} สำเร็จแล้ว! ระบบคำนวณเงินให้อัตโนมัติ 🚀`)
             
-            setWaterPrice("")
-            setElectricPrice("")
+            // ล้างฟอร์มมิเตอร์หลังจากบันทึกสำเร็จ
+            setWaterPrev("")
+            setWaterCurr("")
+            setElectricPrev("")
+            setElectricCurr("")
+            setSelectedRoomId("")
             fetchWaitingInvoices()
 
         } catch (error: any) {
@@ -140,13 +162,9 @@ export default function LandlordPage() {
     }
 
     useEffect(() => {
-        // 🔒 ตรวจสอบสิทธิ์ความปลอดภัย: หากระบบตรวจสอบผู้ใช้งานเสร็จแล้ว
         if (status === "unauthenticated") {
-            // มารองรับกรณีต้องการเปิดใช้งานระบบล็อกอินภายหลัง
             // router.push("/login")
         }
-        
-        // โหลดข้อมูลได้ทันทีเพื่อความรวดเร็วในการทดสอบ
         Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
     }, [status, router])
 
@@ -172,51 +190,29 @@ export default function LandlordPage() {
                     </button>
                 </div>
 
-                {/* 🏗️ ฟอร์มออกบิลค่าน้ำค่าไฟใหม่ */}
+                {/* 🏗️ ฟอร์มออกบิลค่าน้ำค่าไฟใหม่ (ปรับปรุงเป็นระบบกรอกหน่วยมิเตอร์) */}
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200 mb-6">
-                    <h2 className="text-lg font-bold mb-4 text-gray-700">📝 ออกใบแจ้งหนี้ประจำเดือนใหม่</h2>
-                    <form onSubmit={handleCreateInvoice} className="grid gap-4 sm:grid-cols-2 md:grid-cols-5 items-end">
+                    <h2 className="text-lg font-bold mb-4 text-gray-700">📝 ออกใบแจ้งหนี้ประจำเดือนใหม่ (ระบบคํานวณมิเตอร์อัตโนมัติ)</h2>
+                    <form onSubmit={handleCreateInvoice} className="space-y-4 text-sm">
                         
-                        <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">เลือกห้องพัก</label>
-                            <select 
-                                value={selectedRoomId} 
-                                onChange={(e) => setSelectedRoomId(e.target.value)}
-                                className="w-full rounded-lg border p-2 text-sm bg-white border-gray-300"
-                                required
-                            >
-                                <option value="">-- เลือกห้อง --</option>
-                                {rooms.map(r => (
-                                    <option key={r.id} value={r.id}>ห้อง {r.room_number} (ค่าห้อง ฿{r.price})</option>
-                                ))}
-                            </select>
-                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            {/* เลือกห้องพัก */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">เลือกห้องพัก</label>
+                                <select 
+                                    value={selectedRoomId} 
+                                    onChange={(e) => setSelectedRoomId(e.target.value)}
+                                    className="w-full rounded-lg border p-2 bg-white border-gray-300"
+                                    required
+                                >
+                                    <option value="">-- เลือกห้อง --</option>
+                                    {rooms.map(r => (
+                                        <option key={r.id} value={r.id}>ห้อง {r.room_number}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">ค่าน้ำประปา (บาท)</label>
-                            <input 
-                                type="number" 
-                                placeholder="เช่น 150" 
-                                value={waterPrice}
-                                onChange={(e) => setWaterPrice(e.target.value)}
-                                className="w-full rounded-lg border p-2 text-sm border-gray-300"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">ค่าไฟฟ้า (บาท)</label>
-                            <input 
-                                type="number" 
-                                placeholder="เช่น 450" 
-                                value={electricPrice}
-                                onChange={(e) => setElectricPrice(e.target.value)}
-                                className="w-full rounded-lg border p-2 text-sm border-gray-300"
-                                required
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
+                            {/* เดือน */}
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">เดือน</label>
                                 <input 
@@ -224,27 +220,107 @@ export default function LandlordPage() {
                                     min="1" max="12"
                                     value={month}
                                     onChange={(e) => setMonth(Number(e.target.value))}
-                                    className="w-full rounded-lg border p-2 text-sm border-gray-300"
+                                    className="w-full rounded-lg border p-2 border-gray-300"
                                     required
                                 />
                             </div>
+
+                            {/* ปี */}
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">ปี</label>
                                 <input 
                                     type="number" 
                                     value={year}
                                     onChange={(e) => setYear(Number(e.target.value))}
-                                    className="w-full rounded-lg border p-2 text-sm border-gray-300"
+                                    className="w-full rounded-lg border p-2 border-gray-300"
                                     required
                                 />
                             </div>
                         </div>
 
-                        <div>
+                        {/* แสดงค่าห้องอัตโนมัติเมื่อเลือกห้อง */}
+                        {selectedRoomId && (
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-gray-700">
+                                💵 ค่าห้องปกติของห้องนี้: <span className="font-bold text-gray-900">฿{rPrice.toLocaleString()} บาท</span>
+                            </div>
+                        )}
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            {/* 💧 ส่วนกรอกข้อมูลน้ำ */}
+                            <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40">
+                                <h3 className="font-bold text-blue-600 mb-2">💧 มิเตอร์น้ำประปา (หน่วยละ ฿{WATER_RATE})</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งก่อน</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="ครั้งก่อน" 
+                                            value={waterPrev}
+                                            onChange={(e) => setWaterPrev(e.target.value)}
+                                            className="w-full rounded-lg border p-2 bg-white border-gray-300"
+                                            required={!!selectedRoomId}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งนี้</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="ครั้งนี้" 
+                                            value={waterCurr}
+                                            onChange={(e) => setWaterCurr(e.target.value)}
+                                            className="w-full rounded-lg border p-2 bg-white border-gray-300"
+                                            required={!!selectedRoomId}
+                                        />
+                                    </div>
+                                </div>
+                                {waterUnits > 0 && (
+                                    <p className="text-xs text-blue-700 font-medium mt-1">ใช้ไป {waterUnits} หน่วย = ฿{wPrice.toLocaleString()} บาท</p>
+                                )}
+                            </div>
+
+                            {/* ⚡ ส่วนกรอกข้อมูลไฟ */}
+                            <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/40">
+                                <h3 className="font-bold text-amber-600 mb-2">⚡ มิเตอร์ไฟฟ้า (หน่วยละ ฿{ELECTRIC_RATE})</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งก่อน</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="ครั้งก่อน" 
+                                            value={electricPrev}
+                                            onChange={(e) => setElectricPrev(e.target.value)}
+                                            className="w-full rounded-lg border p-2 bg-white border-gray-300"
+                                            required={!!selectedRoomId}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">เลขมิเตอร์ครั้งนี้</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="ครั้งนี้" 
+                                            value={electricCurr}
+                                            onChange={(e) => setElectricCurr(e.target.value)}
+                                            className="w-full rounded-lg border p-2 bg-white border-gray-300"
+                                            required={!!selectedRoomId}
+                                        />
+                                    </div>
+                                </div>
+                                {electricUnits > 0 && (
+                                    <p className="text-xs text-amber-700 font-medium mt-1">ใช้ไป {electricUnits} หน่วย = ฿{ePrice.toLocaleString()} บาท</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 💰 สรุปยอดรวมท้ายฟอร์ม */}
+                        <div className="flex items-center justify-between border-t pt-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                            <div>
+                                <span className="text-xs font-bold text-gray-500 block uppercase">ยอดรวมใบแจ้งหนี้ทั้งหมด:</span>
+                                <span className="text-2xl font-black text-blue-700">฿{totalAmount.toLocaleString()} <span className="text-sm font-normal text-gray-500">บาท</span></span>
+                            </div>
                             <button
                                 type="submit"
-                                disabled={creating}
-                                className="w-full rounded-lg bg-blue-600 py-2 font-bold text-white text-sm hover:bg-blue-700 transition shadow-sm disabled:bg-gray-400"
+                                disabled={creating || !selectedRoomId}
+                                className="rounded-lg bg-blue-600 px-6 py-2.5 font-bold text-white text-sm hover:bg-blue-700 transition shadow-sm disabled:bg-gray-400"
                             >
                                 {creating ? "กำลังสร้างบิล..." : "🚀 ออกบิลส่งผู้เช่า"}
                             </button>
@@ -253,7 +329,7 @@ export default function LandlordPage() {
                     </form>
                 </div>
 
-                {/* ตารางรายการห้องที่รอตรวจสอบ */}
+                {/* ตารางรายการห้องที่รอตรวจสอบ (ส่วนนี้เหมือนเดิมร้อยเปอร์เซ็นต์ครับ) */}
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
                     <h2 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
                         ⏳ รายการบิลรอการตรวจสอบ ({invoices.length} ห้อง)
