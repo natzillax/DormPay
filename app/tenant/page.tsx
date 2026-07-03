@@ -72,7 +72,7 @@ export default function TenantDashboardPage() {
 
         } catch (error: any) {
             console.error("❌ เกิดข้อผิดพลาดในการดึงข้อมูลบิล:", error.message)
-        } chunks: {
+        } finally {
             setLoading(false)
         }
     }
@@ -101,7 +101,7 @@ export default function TenantDashboardPage() {
                 .getPublicUrl(filePath)
 
             // อัปเดตสถานะบิลเป็น WAITING และผูก URL สลิป
-            const { error: updateError } = await supabase
+            const { error: updateInvoiceError } = await supabase
                 .from("invoices")
                 .update({
                     slip_url: publicUrl,
@@ -109,7 +109,20 @@ export default function TenantDashboardPage() {
                 })
                 .eq("id", invoice.id)
 
-            if (updateError) throw updateError
+            if (updateInvoiceError) throw updateInvoiceError
+
+            // 2. 🔥 เพิ่มคำสั่งนี้: บันทึกประวัติการจ่ายเงินลงในตาราง payments ตามโครงสร้างของคุณ
+            const { error: insertPaymentError } = await supabase
+                .from("payments")
+                .insert([{
+                    invoice_id: invoice.id,
+                    user_id: session?.user?.id || (session?.user as any).id, // ป้องกันเรื่อง Type เช็ค ID คนส่ง
+                    amount: invoice.total_amount, // ดึงยอดรวมทั้งหมดที่จ่าย
+                    payment_method: "TRANSFER",   // ระบุเป็นเงินโอน
+                    slip_url: publicUrl           // เอา URL สลิปจาก Storage มาเก็บที่นี่ด้วย
+                }])
+
+            if (insertPaymentError) throw insertPaymentError
 
             alert("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะจ๊ะ 🎉")
             setFile(null)
@@ -126,16 +139,32 @@ export default function TenantDashboardPage() {
     }
 
     useEffect(() => {
-        if (status === "unauthenticated") {
+        // 1. ดึงค่าอีเมลหรือห้องที่เก็บไว้ใน localStorage ตอนล็อกอินสำเร็จ
+        const savedEmail = localStorage.getItem("tenant_email")
+        const savedRoomId = localStorage.getItem("tenant_room_id")
+
+        // 2. ถ้าไม่มีข้อมูลแปลว่ายังไม่ได้ล็อกอิน ให้เด้งกลับหน้า login
+        if (!savedEmail) {
             router.push("/login")
+            return
         }
-        if (status === "authenticated" && session?.user?.id) {
-            fetchInvoiceData(session.user.id)
+
+        // 3. ถ้าล็อกอินแล้ว ให้ดึงข้อมูลใบแจ้งหนี้ (Invoice) โดยใช้ข้อมูลอีเมลหรือไอดีห้อง
+        // (ปรับฟังก์ชัน fetchInvoiceData ของคุณให้รับค่าตามระบบใหม่)
+        if (savedRoomId) {
+            fetchInvoiceData(savedRoomId) // หรือถ้าฟังก์ชันเดิมใช้ ID ผู้เช่า ให้ส่งไอดีผู้เช่าไปแทนครับ
         }
-    }, [status, session, router])
+    }, [router])
 
     if (status === "loading" || loading) {
         return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพักของคุณ...</div>
+    }
+
+    const handleLogout = () => {
+        localStorage.removeItem("tenant_email")
+        localStorage.removeItem("tenant_room_id")
+        router.refresh()
+        router.replace("/login") // เตะกลับไปหน้าล็อกอินหลัก
     }
 
     return (
@@ -149,8 +178,8 @@ export default function TenantDashboardPage() {
                         <p className="text-sm text-gray-500">ห้องพัก: {session?.user?.name || "กำลังโหลด..."}</p>
                     </div>
                     <button
-                        onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="rounded-md bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition"
+                        onClick={handleLogout}
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
                     >
                         ออกจากระบบ
                     </button>
@@ -174,19 +203,19 @@ export default function TenantDashboardPage() {
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">ค่าห้องพักปกติ:</span>
-                                    <span className="font-semibold">฿{invoice.room_price.toLocaleString()}</span>
+                                    <span className="font-semibold">฿{invoice.room_price?.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">ค่าน้ำประปา:</span>
-                                    <span className="font-semibold">฿{invoice.water_price.toLocaleString()}</span>
+                                    <span className="font-semibold">฿{invoice.water_price?.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between text-sm border-b pb-2">
                                     <span className="text-gray-500">ค่าไฟฟ้า:</span>
-                                    <span className="font-semibold">฿{invoice.electric_price.toLocaleString()}</span>
+                                    <span className="font-semibold">฿{invoice.electric_price?.toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between text-lg font-bold pt-2 text-blue-600">
                                     <span>ยอดรวมทั้งหมด:</span>
-                                    <span>฿{invoice.total_amount.toLocaleString()}</span>
+                                    <span>฿{invoice.total_amount?.toLocaleString()}</span>
                                 </div>
                             </div>
                         )}
@@ -251,20 +280,20 @@ export default function TenantDashboardPage() {
                                         <th className="p-3">ค่าน้ำ</th>
                                         <th className="p-3">ค่าไฟ</th>
                                         <th className="p-3">ยอดรวมทั้งหมด</th>
-                                        <th className="p-3 text-center">สถานะ</th>
+                                        <th className="p-3 text-center">Approve Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y text-sm">
                                     {paidInvoices.map((hist) => (
                                         <tr key={hist.id} className="hover:bg-gray-50 transition text-gray-600">
                                             <td className="p-3 font-semibold text-gray-800">เดือน {hist.month}/{hist.year}</td>
-                                            <td className="p-3">฿{hist.room_price.toLocaleString()}</td>
-                                            <td className="p-3">฿{hist.water_price.toLocaleString()}</td>
-                                            <td className="p-3">฿{hist.electric_price.toLocaleString()}</td>
-                                            <td className="p-3 font-bold text-gray-800">฿{hist.total_amount.toLocaleString()}</td>
+                                            <td className="p-3">฿{hist.room_price?.toLocaleString()}</td>
+                                            <td className="p-3">฿{hist.water_price?.toLocaleString()}</td>
+                                            <td className="p-3">฿{hist.electric_price?.toLocaleString()}</td>
+                                            <td className="p-3 font-bold text-gray-800">฿{hist.total_amount?.toLocaleString()}</td>
                                             <td className="p-3 text-center">
                                                 <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                                                    🟢 จ่ายแล้วสำเร็จ
+                                                    🟢 PAID
                                                 </span>
                                             </td>
                                         </tr>
