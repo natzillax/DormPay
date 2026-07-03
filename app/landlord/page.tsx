@@ -213,15 +213,34 @@ export default function LandlordPage() {
     }
 
     useEffect(() => {
-        if (status === "unauthenticated") {
-            // router.push("/login")
-        }
-        Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
-    }, [status, router])
 
-    if (status === "loading" || loading) {
-        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลแดชบอร์ด...</div>
+        const checkCurrentAdmin = async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        // ถ้าไม่มีการล็อกอินค้างไว้ หรือไม่มีสิทธิ์ ให้เด้งไปหน้าล็อกอินแอดมินทันที
+        if (!user) {
+            router.push("/admin-login")
+            return
+        }
+
+        const { data: userData } = await supabase
+            .from("users")
+            .select("role")
+            .eq("id", user.id)
+            .single()
+
+        if (userData?.role !== "ADMIN") {
+            router.push("/admin-login")
+            return
+        }
+
+        // ดึงข้อมูลค่าน้ำไฟต่อ...
+        Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
     }
+
+    checkCurrentAdmin()
+}, [router])
+
 
     return (
         <div className="min-h-screen bg-gray-100 p-6 text-black">
