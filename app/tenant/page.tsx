@@ -5,13 +5,12 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 
-// เชื่อมต่อ Supabase ฝั่งฟรอนต์เอนด์
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export default function DashboardPage() {
+export default function TenantDashboardPage() {
     const { data: session, status } = useSession()
     const router = useRouter()
 
@@ -21,20 +20,19 @@ export default function DashboardPage() {
     const [uploading, setUploading] = useState(false)
     const [file, setFile] = useState<File | null>(null)
 
-    // 1. ฟังก์ชันดึงข้อมูลบิล (เวอร์ชันแปลง User ID เป็น Room ID เพื่อผูกข้อมูลกับห้องพักถาวร)
+    // 1. ฟังก์ชันดึงข้อมูลบิลของผู้เช่า
     const fetchInvoiceData = async (userId: string) => {
         setLoading(true)
         try {
-            // ขั้นตอนที่ A: วิ่งไปถามตาราง users ว่า "User ID ของคนที่ล็อกอินคนนี้ พักอยู่ห้อง ID อะไร"
+            // ขั้นตอนที่ A: เช็คว่า User คนนี้พักอยู่ห้อง ID อะไร
             const { data: userData, error: userError } = await supabase
                 .from("users")
-                .select("room_id") // 🎯 ดึง Room ID ของแท้ที่คนนี้พักอยู่
+                .select("room_id")
                 .eq("id", userId)
                 .maybeSingle()
 
             if (userError) throw userError
 
-            // ถ้าผู้ใช้งานคนนี้ไม่ได้ผูกกับห้องพักไหนเลย ให้หยุดทำงาน
             if (!userData || !userData.room_id) {
                 console.warn("⚠️ ไม่พบ Room ID ที่ผูกกับ User ID นี้");
                 setInvoice(null);
@@ -43,13 +41,12 @@ export default function DashboardPage() {
             }
 
             const realRoomId = userData.room_id
-            console.log("🎯 พบ Room ID ของแท้ที่ผูกกับห้องพักแล้ว:", realRoomId)
 
-            // ขั้นตอนที่ B: เอา realRoomId ที่ได้ ไปดึงบิลปัจจุบันที่ยังจ่ายไม่เสร็จ (PENDING, WAITING)
+            // ขั้นตอนที่ B: ดึงบิลปัจจุบันที่ยังจ่ายไม่เสร็จ (PENDING, WAITING)
             const { data: currentData, error: currentError } = await supabase
                 .from("invoices")
                 .select("*")
-                .eq("room_id", realRoomId) // 🟢 ค้นหาผ่าน Room ID ของตาราง rooms เสมอ
+                .eq("room_id", realRoomId)
                 .in("status", ["PENDING", "WAITING"])
                 .order("created_at", { ascending: false })
 
@@ -61,11 +58,11 @@ export default function DashboardPage() {
                 setInvoice(null)
             }
 
-            // ขั้นตอนที่ C: เอา realRoomId ไปดึงประวัติบิลย้อนหลังที่จ่ายเงินเสร็จแล้ว (PAID)
+            // ขั้นตอนที่ C: ดึงประวัติบิลย้อนหลังที่จ่ายเงินเสร็จแล้ว (PAID)
             const { data: historyData, error: historyError } = await supabase
                 .from("invoices")
                 .select("*")
-                .eq("room_id", realRoomId) // 🟢 ค้นหาผ่าน Room ID เช่นกัน
+                .eq("room_id", realRoomId)
                 .eq("status", "PAID")
                 .order("year", { ascending: false })
                 .order("month", { ascending: false })
@@ -75,12 +72,12 @@ export default function DashboardPage() {
 
         } catch (error: any) {
             console.error("❌ เกิดข้อผิดพลาดในการดึงข้อมูลบิล:", error.message)
-        } finally {
+        } chunks: {
             setLoading(false)
         }
     }
 
-    // 2. ฟังก์ชันอัปโหลดสลิปเงินโอน
+    // 2. ฟังก์ชันอัปโหลดสลิปเงินโอนเข้า Storage
     const handleUploadSlip = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!file || !invoice) return alert("กรุณาเลือกไฟล์สลิปก่อนนะจ๊ะ!")
@@ -98,12 +95,12 @@ export default function DashboardPage() {
 
             if (uploadError) throw uploadError
 
-            // ดึง Public URL ของไฟล์สลิปที่เพิ่งอัปโหลดสำเร็จ
+            // ดึง Public URL ของไฟล์สลิป
             const { data: { publicUrl } } = supabase.storage
                 .from("slips")
                 .getPublicUrl(filePath)
 
-            // อัปเดตตาราง invoices ใส่ลิงก์สลิป และเปลี่ยนสถานะเป็น WAITING
+            // อัปเดตสถานะบิลเป็น WAITING และผูก URL สลิป
             const { error: updateError } = await supabase
                 .from("invoices")
                 .update({
@@ -117,7 +114,6 @@ export default function DashboardPage() {
             alert("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะจ๊ะ 🎉")
             setFile(null)
 
-            // โหลดข้อมูลใหม่ในหน้านี้ทันที
             if (session?.user?.id) {
                 fetchInvoiceData(session.user.id)
             }
@@ -255,7 +251,7 @@ export default function DashboardPage() {
                                         <th className="p-3">ค่าน้ำ</th>
                                         <th className="p-3">ค่าไฟ</th>
                                         <th className="p-3">ยอดรวมทั้งหมด</th>
-                                        <th className="p-3 text-center">放สถานะ</th>
+                                        <th className="p-3 text-center">สถานะ</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y text-sm">

@@ -14,10 +14,10 @@ export default function LoginPage() {
     e.preventDefault()
     setError("")
 
-    // สั่งล็อกอินผ่านระบบ Credentialsที่เราเซ็ตไว้หลังบ้าน
+    // สั่งล็อกอินผ่าน Next-Auth และส่งคีย์ให้ตรงกับฟังก์ชันหลังบ้าน
     const result = await signIn("credentials", {
-      room_number: roomNumber,
-      password: password,      // 🚀 เปลี่ยนกลับมาเป็นคีย์ password ตัวเล็กธรรมดา
+      room_number: roomNumber, // ✨ ส่งเป็น room_number
+      password: password,      // ส่งเป็น password
       redirect: false,
     })
 
@@ -25,7 +25,7 @@ export default function LoginPage() {
       setError("เลขห้องหรือรหัสผ่านไม่ถูกต้องจ้า!")
     } else {
       // ถ้ารหัสผ่านถูก ให้เด้งไปหน้าแดชบอร์ดหอพักทันที
-      router.push("/dashboard")
+      router.push("/tenant")
     }
   }
 
