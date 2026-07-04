@@ -1,13 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { registerUser } from "../actions/auth" // 🚀 เรียกใช้ Argon2 ผ่านหลังบ้าน
 
 export default function TenantSignUpDirectPage() {
     const router = useRouter()
@@ -23,27 +18,15 @@ export default function TenantSignUpDirectPage() {
         setMessage("")
 
         try {
-            // 🎯 สั่ง Insert ข้อมูลลงตาราง public.users โดยตรง (ไม่ผ่าน Supabase Auth)
-            const { error } = await supabase
-                .from("users")
-                .insert([
-                    {
-                        id: crypto.randomUUID(),
-                        email: email.trim().toLowerCase(),
-                        name: fullName.trim(),
-                        password: password, // 🔥 เพิ่มบรรทัดนี้เข้าไปเพื่อให้ระบบยอมเซฟรหัสผ่านลงตาราง!
-                        role: "TENANT",
-                        status: "PENDING",
-                        room_id: null
-                    }
-                ])
+            // 🎯 ยิงตรงไปหาหลังบ้าน ให้จบในที่เดียว
+            const result = await registerUser({
+                email: email.trim().toLowerCase(),
+                password: password,
+                name: fullName.trim()
+            })
 
-            if (error) {
-                // ดักกรณีอีเมลซ้ำในระบบ
-                if (error.code === "23505") {
-                    throw new Error("อีเมลนี้เคยถูกใช้สมัครสมาชิกไปแล้ว")
-                }
-                throw error
+            if (!result.success) {
+                throw new Error(result.message)
             }
 
             setMessage("🎉 สมัครสมาชิกสำเร็จแล้ว! ข้อมูลของคุณถูกส่งไปให้เจ้าของหอพักผูกเข้าห้องแล้วครับ")
@@ -54,7 +37,7 @@ export default function TenantSignUpDirectPage() {
             setFullName("")
 
         } catch (error: any) {
-            setMessage("❌ เกิดข้อผิดพลาด: " + error.message)
+            setMessage(error.message.includes("❌") ? error.message : "❌ เกิดข้อผิดพลาด: " + error.message)
         } finally {
             setLoading(false)
         }

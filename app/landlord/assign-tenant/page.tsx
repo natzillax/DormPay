@@ -48,7 +48,7 @@ export default function AdminAssignTenantPage() {
 
             // C. กรองหาผู้เช่าที่สมัครใหม่ (รอยืนยัน) สถานะเป็น PENDING และยังไม่มีห้องพัก
             // 🎯 กรองโดยระบุอีเมลของแอดมิน/เจ้าของหอที่ต้องการซ่อนโดยตรง
-            const adminEmails = ["nantharat.nat@gmail.com", "landlord@dorm.com"]; // 🔥 เปลี่ยนเป็นอีเมลแอดมินของคุณตรงนี้ครับ
+            const adminEmails = ["nantharat.sk@gmail.com", "landlord@dorm.com"]; // 🔥 เปลี่ยนเป็นอีเมลแอดมินของคุณตรงนี้ครับ
 
             const freshUsers = allUsers?.filter((u) => {
                 // ดึงคนที่ไม่มี room_id ผูกอยู่ (ไม่ว่าจะสถานะ PENDING หรือ ACTIVE) และไม่ใช่อีเมลแอดมิน

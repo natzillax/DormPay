@@ -4,11 +4,12 @@ import { useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { loginUser } from "../actions/auth"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// const supabase = createClient(
+//   process.env.NEXT_PUBLIC_SUPABASE_URL!,
+//   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// )
 
 export default function LoginPage() {
   const router = useRouter()
@@ -23,24 +24,23 @@ export default function LoginPage() {
     setErrorMsg("")
 
     try {
-      // 🎯 เปลี่ยนมาค้นหาข้อมูลผู้ใช้งานจากตาราง public.users โดยตรง
-      const { data: user, error: dbError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", email.trim().toLowerCase())
-        .single() // ค้นหาแถวข้อมูลที่ตรงกับอีเมลนี้เพียงแถวเดียว
+      // 📦 1. จัดเตรียมข้อมูลเพื่อส่งไปให้ Server Action
+      const formData = new FormData()
+      formData.append("email", email.trim().toLowerCase())
+      formData.append("password", password)
 
-      if (dbError || !user) {
-        throw new Error("ไม่พบอีเมลผู้ใช้งานนี้ในระบบ หรือข้อมูลไม่ถูกต้อง")
+      // 🔐 2. ส่งข้อมูลไปตรวจสอบที่หลังบ้านด้วย Argon2 (ไม่ดึงรหัสมาเทียบดื้อ ๆ บน Client)
+      const result = await loginUser(formData)
+
+      // หากตรวจสอบไม่ผ่าน (เช่น รหัสไม่ตรง หรือ ไม่พบอีเมล) ให้โยน Error ออกไป
+      if (!result.success || !result.user) {
+        throw new Error(result.message)
       }
 
-      // 🎯 ตรวจสอบรหัสผ่านที่กรอกเข้ามาเทียบกับข้อมูลในตาราง
-      // หมายเหตุ: โค้ดนี้เปรียบเทียบข้อความธรรมดา หากในระบบมีการเข้ารหัสลับ ให้ใช้ฟังก์ชันสำหรับตรวจสอบรหัสผ่านแทนครับ
-      if (user.password !== password) {
-        throw new Error("รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง")
-      }
+      // 🎯 3. ดึงข้อมูล User และใช้ "as any" บังคับหลบ TypeScript เพื่อดึงค่าสิทธิ์กับห้องพัก
+      const user = result.user as any
 
-      // 🎯 ตรวจสอบสถานะและสิทธิ์ (Role/Status) เพื่อแยกหน้าแดชบอร์ดตามที่ออกแบบไว้
+      // 🎯 4. ตรวจสอบสิทธิ์และสถานะตามที่คุณดีไซน์ไว้
       if (user.role === "ADMIN") {
         router.push("/landlord/dashboard") // ย้ายไปหน้าแดชบอร์ดเจ้าของหอพัก
       } else if (user.status === "PENDING") {
@@ -48,12 +48,13 @@ export default function LoginPage() {
       } else if (user.status === "MOVED_OUT") {
         setErrorMsg("❌ บัญชีนี้สิ้นสุดสัญญาเช่าแล้ว ไม่สามารถเข้าสู่ระบบได้")
       } else {
-        localStorage.setItem("tenant_room_id", user.room_id)
-        localStorage.setItem("tenant_email", user.email)
+        // บันทึกสถานะผู้เช่าลง LocalStorage ตามระบบเดิมของคุณ
+        localStorage.setItem("tenant_room_id", user.room_id || "")
+        localStorage.setItem("tenant_email", user.email || "")
+        localStorage.setItem("tenant_user_id", user.id || "") // แนะนำให้เก็บอันนี้ไว้เผื่อดึง Realtime
 
         router.refresh()
-        // 💡 เอาเครื่องหมาย / ตัวสุดท้ายออก ให้เหลือแค่นี้ เพื่อให้ตรงกับโครงสร้างโฟลเดอร์ในรูปเป๊ะๆ ครับ
-        router.replace("/tenant")
+        router.replace("/tenant") // ย้ายเข้าหน้าจอผู้เช่า
       }
 
     } catch (error: any) {
