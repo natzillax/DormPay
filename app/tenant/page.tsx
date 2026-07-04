@@ -14,24 +14,29 @@ export default function TenantDashboardPage() {
     const { data: session, status } = useSession()
     const router = useRouter()
 
-    const [invoice, setInvoice] = useState<any>(null) // บิลปัจจุบันที่ต้องจ่าย
-    const [paidInvoices, setPaidInvoices] = useState<any[]>([]) // 📜 ประวัติบิลที่จ่ายแล้ว
+    const [tenantName, setTenantName] = useState<string>("กำลังโหลด...") // ✨ เพิ่ม State เก็บชื่อผู้เช่าจริง
+    const [invoice, setInvoice] = useState<any>(null) 
+    const [paidInvoices, setPaidInvoices] = useState<any[]>([]) 
     const [loading, setLoading] = useState(true)
     const [uploading, setUploading] = useState(false)
     const [file, setFile] = useState<File | null>(null)
 
-    // 1. ฟังก์ชันดึงข้อมูลบิลของผู้เช่า (ครอบด้วย useCallback เพื่อป้องกันการ loop ทำงานซ้ำ)
+    // 1. ฟังก์ชันดึงข้อมูลบิลของผู้เช่า
     const fetchInvoiceData = useCallback(async (userId: string) => {
         setLoading(true)
         try {
-            // ขั้นตอนที่ A: เช็คว่า User คนนี้พักอยู่ห้อง ID อะไร
+            // ดึงชื่อเต็มและ Room ID ไปพร้อมๆ กันเลยเพื่อลดความซ้ำซ้อน
             const { data: userData, error: userError } = await supabase
                 .from("users")
-                .select("room_id")
+                .select("room_id, name")
                 .eq("id", userId)
                 .maybeSingle()
 
             if (userError) throw userError
+
+            if (userData?.name) {
+                setTenantName(userData.name) // 🎉 เซฟชื่อผู้เช่าที่ดึงมาจากเบสจริงลงใน State
+            }
 
             if (!userData || !userData.room_id) {
                 console.warn("⚠️ ไม่พบ Room ID ที่ผูกกับ User ID นี้");
@@ -41,35 +46,21 @@ export default function TenantDashboardPage() {
             }
 
             const realRoomId = userData.room_id
-            // const realRoomId = "3062c2e5-ee9f-4121-b966-bec11fb65ea1"
 
-            // ขั้นตอนที่ B: ดึงบิลปัจจุบันที่ยังจ่ายไม่เสร็จ (PENDING, WAITING)
+            // ขั้นตอนที่ B: ดึงบิลปัจจุบันที่ยังจ่ายไม่เสร็จ
             const { data: currentData, error: currentError } = await supabase
                 .from("invoices")
                 .select("*")
                 .eq("room_id", realRoomId)
-                .in("status", ["PENDING", "WAITING"])
                 .order("created_at", { ascending: false })
 
-            if (currentError) throw currentError
-
-            if (currentData && currentData.length > 0) {
-                setInvoice(currentData[0])
-            } else {
-                setInvoice(null)
-            }
+            // คัดกรองสถานะบิลฝั่ง Client เพื่อความแม่นยำ
+            const currentBill = currentData?.find(inv => inv.status === "PENDING" || inv.status === "WAITING")
+            setInvoice(currentBill || null)
 
             // ขั้นตอนที่ C: ดึงประวัติบิลย้อนหลังที่จ่ายเงินเสร็จแล้ว (PAID)
-            const { data: historyData, error: historyError } = await supabase
-                .from("invoices")
-                .select("*")
-                .eq("room_id", realRoomId)
-                .eq("status", "PAID")
-                .order("year", { ascending: false })
-                .order("month", { ascending: false })
-
-            if (historyError) throw historyError
-            setPaidInvoices(historyData || [])
+            const historyBills = currentData?.filter(inv => inv.status === "PAID") || []
+            setPaidInvoices(historyBills)
 
         } catch (error: any) {
             console.error("❌ เกิดข้อผิดพลาดในการดึงข้อมูลบิล:", error.message)
@@ -89,19 +80,16 @@ export default function TenantDashboardPage() {
             const fileName = `${invoice.id}-${Date.now()}.${fileExt}`
             const filePath = `slips/${fileName}`
 
-            // อัปโหลดเข้า Storage Bucket ชื่อ 'slips'
             const { error: uploadError } = await supabase.storage
                 .from("slips")
                 .upload(filePath, file)
 
             if (uploadError) throw uploadError
 
-            // ดึง Public URL ของไฟล์สลิป
             const { data: { publicUrl } } = supabase.storage
                 .from("slips")
                 .getPublicUrl(filePath)
 
-            // อัปเดตสถานะบิลเป็น WAITING และผูก URL สลิป
             const { error: updateInvoiceError } = await supabase
                 .from("invoices")
                 .update({
@@ -112,12 +100,11 @@ export default function TenantDashboardPage() {
 
             if (updateInvoiceError) throw updateInvoiceError
 
-            // บันทึกประวัติการจ่ายเงินลงในตาราง payments
             const { error: insertPaymentError } = await supabase
                 .from("payments")
                 .insert([{
                     invoice_id: invoice.id,
-                    user_id: session?.user?.id || (session?.user as any)?.id || localStorage.getItem("tenant_user_id"), 
+                    user_id: localStorage.getItem("tenant_user_id"), 
                     amount: invoice.total_amount, 
                     payment_method: "TRANSFER",   
                     slip_url: publicUrl           
@@ -128,7 +115,7 @@ export default function TenantDashboardPage() {
             alert("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะจ๊ะ 🎉")
             setFile(null)
 
-            const currentUserId = session?.user?.id || localStorage.getItem("tenant_user_id")
+            const currentUserId = localStorage.getItem("tenant_user_id")
             if (currentUserId) {
                 fetchInvoiceData(currentUserId)
             }
@@ -140,55 +127,39 @@ export default function TenantDashboardPage() {
         }
     }
 
-    // ✨ 3. แก้ไขจุดตรวจสอบสิทธิ์และดึงข้อมูลบิลให้เด้งทำงานอย่างถูกต้อง
+    // 3. ควบคุม Flow การเช็คชื่อผู้ใช้งาน
     useEffect(() => {
-        if (status === "loading") return // รอนะบบโหลด Session แป๊บหนึ่ง
-
-        // ดึงสิทธิ์จาก Session ของระบบก่อนเป็นหลักเพื่อความปลอดภัย
-        let currentUserId = session?.user?.id;
-
-        // ระบบสำรอง (Fallback): ถ้า Session ยังไม่มา ให้ไปควานหาจาก localStorage เผื่อเคสหลุด
-        if (!currentUserId) {
-            const savedEmail = localStorage.getItem("tenant_email")
-            if (!savedEmail) {
-                router.replace("/login")
-                return
-            }
-
-            // ถ้ามี email ค้างอยู่ในคลัง ให้ดึง ID ของผู้ใช้งานมาเก็บไว้
-            const fetchBackupUser = async () => {
-                const { data } = await supabase
-                    .from("users")
-                    .select("id")
-                    .eq("email", savedEmail)
-                    .maybeSingle()
-                
-                if (data?.id) {
-                    localStorage.setItem("tenant_user_id", data.id)
-                    fetchInvoiceData(data.id)
-                } else {
-                    router.replace("/login")
-                }
-            }
-            fetchBackupUser()
-        } else {
-            // 🎯 เคสปกติ: เมื่อได้ไอดีผู้เช่าตัวจริงแล้ว สั่งรันดึงข้อมูลบิลทันที!
-            fetchInvoiceData(currentUserId)
+        const savedEmail = localStorage.getItem("tenant_email")
+        if (!savedEmail) {
+            router.replace("/login")
+            return
         }
-    }, [session, status, router, fetchInvoiceData])
 
-    if (status === "loading" || loading) {
-        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพักของคุณ...</div>
-    }
+        const fetchUserData = async () => {
+            const { data, error } = await supabase
+                .from("users")
+                .select("id, name")
+                .eq("email", savedEmail)
+                .maybeSingle()
+            
+            if (data?.id) {
+                localStorage.setItem("tenant_user_id", data.id)
+                if (data.name) setTenantName(data.name) // 🎯 บังคับอัปเดตชื่อผู้ใช้งานจริงทันที
+                fetchInvoiceData(data.id)
+            } else {
+                router.replace("/login")
+            }
+        }
+        fetchUserData()
+    }, [router, fetchInvoiceData])
 
     const handleLogout = async () => {
-        localStorage.removeItem("tenant_email")
-        localStorage.removeItem("tenant_room_id")
-        localStorage.removeItem("tenant_user_id")
-        
-        // ใช้ signOut ของ next-auth เพื่อเคลียร์ token ทั้งระบบให้สะอาด
-        const { signOut } = await import("next-auth/react")
-        await signOut({ callbackUrl: "/login" })
+        localStorage.clear() // เคลียร์ค่าทั้งหมดให้เกลี้ยงในคำสั่งเดียว
+        router.push("/login")
+    }
+
+    if (loading) {
+        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพักของคุณ...</div>
     }
 
     return (
@@ -199,7 +170,8 @@ export default function TenantDashboardPage() {
                 <div className="flex items-center justify-between border-b pb-4 mb-6 bg-white p-6 rounded-xl shadow-sm">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-800">🏢 ยินดีต้อนรับสู่ DormPay</h1>
-                        <p className="text-sm text-gray-500">ผู้เช่า: {session?.user?.name || "กำลังโหลด..."}</p>
+                        {/* 🟢 อัปเดตเปลี่ยนมาดึงข้อมูลชื่อจาก state tenantName แทน session เดิม */}
+                        <p className="text-sm text-gray-500">ผู้เช่า: {tenantName}</p>
                     </div>
                     <button
                         onClick={handleLogout}
@@ -211,7 +183,6 @@ export default function TenantDashboardPage() {
 
                 {/* บล็อกหลักแสดงบิลปัจจุบัน */}
                 <div className="grid gap-6 md:grid-cols-2">
-
                     {/* ฝั่งซ้าย: รายละเอียดค่าใช้จ่าย */}
                     <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
                         <h2 className="text-lg font-bold mb-4 text-gray-700">📅 ยอดบิลที่ต้องชำระ</h2>
