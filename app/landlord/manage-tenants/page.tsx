@@ -9,12 +9,16 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// 💡 1. ปรับปรุง Interface ให้รองรับโครงสร้างข้อมูลที่ดึงข้ามตารางมาจากตาราง rooms
 interface Tenant {
   id: string
   name: string
   email: string
   room_id: string | null
   status: string
+  rooms: {
+    room_number: string
+  } | null // ข้อมูลห้องพักที่ดึงมาพ่วงกัน
 }
 
 export default function ManageTenantsPage() {
@@ -22,18 +26,23 @@ export default function ManageTenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [loading, setLoading] = useState(true)
 
-  // 🔄 1. ดึงรายชื่อผู้เช่าที่กำลังพักอยู่ (ACTIVE) ขึ้นมาแสดงผล
+  // 🔄 2. แก้ไขฟังก์ชันดึงข้อมูล เพื่อให้ Supabase ไป JOIN เอาเลขห้องมาให้
   const fetchActiveTenants = async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("*")
+        // 💡 เปลี่ยนจาก "*" มาดึงเฉพาะฟิลด์ที่ใช้ และใส่ rooms(room_number) เพื่อ Join ตารางห้องพัก
+        //  .select("id, name, email, room_id, status, rooms(room_number)")
+        .select("*, rooms!room_id(room_number)")
         .eq("role", "TENANT")
-        .eq("status", "ACTIVE") // ดึงเฉพาะคนที่ยังเช่าอยู่ปัจจุบัน
+        .eq("status", "ACTIVE") 
 
       if (error) throw error
-      setTenants(data || [])
+
+      console.log("Tenants Data:", data)
+
+      setTenants((data as any) || [])
     } catch (error: any) {
       alert("โหลดข้อมูลผู้เช่าล้มเหลว: " + error.message)
     } finally {
@@ -45,7 +54,7 @@ export default function ManageTenantsPage() {
     fetchActiveTenants()
   }, [])
 
-  // 🎯 2. ฟังก์ชันหลักสำหรับปุ่ม "แจ้งย้ายออก (Disconnect)"
+  // 🎯 3. ฟังก์ชันหลักสำหรับปุ่ม "แจ้งย้ายออก" (คงเดิมไว้)
   const handleMoveOut = async (tenantId: string, roomId: string | null) => {
     if (!roomId) {
       alert("❌ ผู้เช่าคนนี้ไม่ได้ผูกกับห้องพักใดๆ")
@@ -56,30 +65,26 @@ export default function ManageTenantsPage() {
     if (!confirmAction) return
 
     try {
-      // สเตปที่ 1: ปลดล็อกและเคลียร์สิทธิ์ผู้เช่าในตาราง users
       const { error: userError } = await supabase
         .from("users")
         .update({
-          room_id: null,        // ปลดห้องออก
-          status: "MOVED_OUT"   // สลับเป็นย้ายออกแล้ว (จะล็อกอินไม่ได้)
+          room_id: null,        
+          status: "MOVED_OUT"   
         })
         .eq("id", tenantId)
 
       if (userError) throw userError
 
-      // สเตปที่ 2: สลับสถานะในตาราง rooms กลับมาเป็นห้องว่าง (VACANT)
       const { error: roomError } = await supabase
         .from("rooms")
         .update({
-          status: "VACANT"      // 💡 ห้องกลับมาว่างพร้อมต้อนรับคนใหม่
+          status: "VACANT"      
         })
         .eq("id", roomId)
 
       if (roomError) throw roomError
 
       alert("🎉 แจ้งย้ายออกและเคลียร์สถานะห้องว่างสำเร็จแล้ว!")
-      
-      // ดึงข้อมูลใหม่มาอัปเดตหน้าจอทันที คนที่ย้ายออกจะหายไปจากรายการ
       fetchActiveTenants() 
       router.refresh()
 
@@ -105,6 +110,7 @@ export default function ManageTenantsPage() {
                 <tr className="bg-gray-200 text-gray-700 font-semibold text-sm">
                   <th className="p-3 border">ชื่อ-นามสกุล</th>
                   <th className="p-3 border">อีเมล</th>
+                  <th className="p-3 border">เลขห้อง</th>
                   <th className="p-3 border">รหัสห้องพัก (Room ID)</th>
                   <th className="p-3 border text-center">การจัดการ</th>
                 </tr>
@@ -114,7 +120,13 @@ export default function ManageTenantsPage() {
                   <tr key={tenant.id} className="hover:bg-gray-50 text-sm">
                     <td className="p-3 border font-medium">{tenant.name}</td>
                     <td className="p-3 border text-gray-600">{tenant.email}</td>
-                    <td className="p-3 border text-gray-600 font-mono">{tenant.room_id || "ไม่ได้ผูกห้อง"}</td>
+                    
+                    {/* 💡 4. แก้ไขจุดนี้เพื่อแสดงเลขห้องที่ดึงเชื่อมมาจากตาราง rooms */}
+                    <td className="p-3 border text-blue-600 font-bold">
+                      {tenant.rooms?.room_number || "ไม่มีข้อมูลห้อง"}
+                    </td>
+
+                    <td className="p-3 border text-gray-600 font-mono text-xs">{tenant.room_id || "ไม่ได้ผูกห้อง"}</td>
                     <td className="p-3 border text-center">
                       <button
                         onClick={() => handleMoveOut(tenant.id, tenant.room_id)}
