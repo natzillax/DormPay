@@ -78,7 +78,7 @@ export default function LandlordRevenueReportPage() {
 
                 <Link
                     href="/landlord"
-                    className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft transition hover:text-ink"
+                    className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-dark"
                 >
                     <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                         <path d="M12 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />

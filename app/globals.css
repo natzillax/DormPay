@@ -1,31 +1,41 @@
 @import "tailwindcss";
 
 /*
-  DormPay — design tokens
-  แนวคิด: Clean & Modern — ขาวสะอาด ระยะห่างโปร่ง เน้นสีเน้นเดียว (accent)
-  ไม่มีการโหลดฟอนต์จากอินเทอร์เน็ต ใช้ system font stack ล้วนเพื่อความเสถียร
+  DormPay — Premium Design Tokens v2 (Modern Pastel Refresh)
+  แนวคิด: Modern Pastel & Sharp Contrast — ล็อกชื่อตัวแปรเดิมทั้งหมด 
+  แต่ปรับค่าสี มิติ และแสงเงาใหม่ให้ดูหรูหรา สว่าง สบายตา และมีมิติมากขึ้น
 */
 
 :root {
-  /* ---- color: clean neutral palette (contrast-checked for readability) ---- */
-  --ink: #0f172a;          /* ตัวหนังสือหลัก (slate-900) */
-  --ink-soft: #475569;     /* ตัวหนังสือรอง — เข้มขึ้นกว่าเดิมเพื่อให้อ่านง่ายขึ้น (slate-600, contrast 7.1:1 บนพื้นขาว) */
-  --background: #ffffff;
-  --paper-raised: #ffffff; /* พื้นผิวการ์ด */
-  --line: #cbd5e1;         /* เส้นขอบ — เข้มขึ้นให้มองเห็นขอบเขตชัดเจน (slate-300) */
-  --line-soft: #e2e8f0;    /* เส้นขอบจาง (slate-200) */
+  color-scheme: light;
 
-  --accent: #4f46e5;       /* สีเน้นหลัก indigo-600 */
-  --accent-dark: #4338ca;
-  --accent-tint: #eef2ff;
+  /* ---- คุมโทนตัวอักษรให้อ่านง่าย คมชัด สมาร์ท ---- */
+  --ink: #0f172a;          /* ตัวหนังสือหลัก Slate 900 */
+  --ink-soft: #334155;     /* ตัวหนังสือรอง ปรับให้เข้มขึ้นเล็กน้อยเพื่อเพิ่ม Contrast (Slate 700) */
+  
+  /* 🌸 สีพื้นหลังที่คุณเลือก — นำมาเกลาขอบและสัดส่วนเงาให้เข้าคู่กัน */
+  --background: #e8c3e6;   
+  --paper-raised: #ffffff; /* ตัวการ์ดยังคงขาวบริสุทธิ์เพื่อตัดกับพื้นหลังชมพูให้เด้งออกมา */
+  
+  /* 🪞 เส้นขอบและการแบ่งสัดส่วนที่ดูซอฟต์ลง */
+  --line: #e2e8f0;         /* Slate 200 ดูคลีน โมเดิร์น ไม่แข็ง */
+  --line-soft: #f1f5f9;    /* Slate 100 จางนุ่มนวล */
 
-  --success: #16a34a;      /* สถานะ "จ่ายแล้ว" green-600 */
-  --success-tint: #f0fdf4;
+  /* 🌌 อัปเกรดสีหลัก (Accent) จาก Indigo ทั่วไป ให้เป็น Deep Royal Blue ที่สดและดูแพง */
+  --accent: #3b82f6;       
+  --accent-dark: #0000e0;
+  --accent-tint: #eff6ff;  /* สีฟ้านมพาสเทล ตัดกับสีการ์ดและไอคอนโลโก้ได้อย่างยอดเยี่ยม */
 
-  --danger: #dc2626;       /* สถานะ "ค้างชำระ" / แจ้งเตือน red-600 */
-  --danger-tint: #fef2f2;
+  /* 🟢 สถานะความสำเร็จ (จ่ายแล้ว) โทนสดชื่น สบายตา */
+  --success: #10b981;      /* Emerald 500 */
+  --success-tint: #ecfdf5;
 
-  --warning: #d97706;      /* สถานะ "รอตรวจสอบ" amber-600 */
+  /* 🔴 สถานะแจ้งเตือน/ค้างชำระ โทนโรสเบอร์รี่หรู ๆ ไม่ฉูดฉาดจนปวดตา */
+  --danger: #f43f5e;       /* Rose 500 */
+  --danger-tint: #fff1f2;
+
+  /* 🟡 สถานะรอตรวจสอบ */
+  --warning: #f59e0b;      /* Amber 500 */
   --warning-tint: #fffbeb;
 
   --foreground: var(--ink);
@@ -33,10 +43,12 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace;
 
-  --radius-card: 16px;
-  --radius-control: 10px;
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.10);
-  --shadow-elevated: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 12px 32px -8px rgba(15, 23, 42, 0.14);
+  --radius-card: 20px;     /* ปรับการ์ดให้มีความโค้งมนขึ้นสไตล์ Modern Web แอปพลิเคชัน */
+  --radius-control: 12px;
+
+  /* ☁️ รื้อระบบเงาใหม่! เปลี่ยนจากเงาสีดำทึบ เป็นเงาฟุ้งซอฟต์ผสมโทนม่วง/น้ำเงินจางๆ ให้เข้ากับพื้นหลังชมพูเว็บคุณ */
+  --shadow-card: 0 4px 20px -2px rgba(15, 23, 42, 0.03), 0 12px 30px -4px rgba(79, 70, 229, 0.05);
+  --shadow-elevated: 0 20px 40px -8px rgba(15, 23, 42, 0.08), 0 30px 60px -12px rgba(79, 70, 229, 0.12);
 }
 
 @theme inline {
@@ -79,10 +91,9 @@ body {
   position: relative;
 }
 
-/* ---- calm background: static soft glow, no motion ----
-   ตัดการเคลื่อนไหวออกทั้งหมด เพื่อไม่ให้รบกวนสายตาหรือทำให้วิงเวียน
-   (คนที่ไวต่อการเคลื่อนไหว เช่น ผู้สูงอายุ อาจรู้สึกไม่สบายกับพื้นหลังที่ลอยไปมา)
-   ยังคงความรู้สึกทันสมัยด้วยแสงนุ่มๆ จางๆ แต่อยู่นิ่งตลอดเวลา */
+/* ---- 🪄 อัปเกรดระบบออร่าเรืองแสง (Glow Background) ----
+   ปรับสัดส่วนสีใหม่ให้สะท้อนล้อไปกับพื้นหลังสีชมพูพาสเทลของคุณ 
+   โดยมุมซ้ายจะเรืองแสงฟ้าคราม และมุมขวาจะอมเขียวมิ้นท์สว่าง ช่วยทำให้พื้นหลังเรียบๆ ดูมีมิติชวนมองมากขึ้น */
 body::before {
   content: "";
   position: fixed;
@@ -90,14 +101,14 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 7%, transparent) 0%, transparent 40%),
-    radial-gradient(circle at 85% 90%, color-mix(in srgb, var(--success) 6%, transparent) 0%, transparent 40%);
+    radial-gradient(circle at 10% 15%, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 55%),
+    radial-gradient(circle at 90% 85%, color-mix(in srgb, var(--success) 12%, transparent) 0%, transparent 50%);
   background-repeat: no-repeat;
 }
 
 h1, h2, h3 {
-  letter-spacing: -0.02em;
-  font-weight: 600;
+  letter-spacing: -0.025em;
+  font-weight: 700; /* ปรับพาดหัวให้หนาขึ้นคมชัดขึ้นแบบอินเตอร์เนชันแนล */
 }
 
 .font-mono, .figure {
@@ -105,24 +116,24 @@ h1, h2, h3 {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- row divider ---- */
+/* ---- สไตล์ตาราง/รายการบันทึก ---- */
 .ledger-row {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft); /* ปรับให้เส้นคั่นนุ่มตาขึ้น */
 }
 .ledger-row:last-child {
   border-bottom: none;
 }
 
-/* ---- status badge ---- */
+/* ---- บาร์สถานะแบบโมเดิร์นคูล ---- */
 .stamp {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
+  padding: 0.375rem 0.75rem; /* เพิ่มสัดส่วนให้สมดุล */
   border-radius: 999px;
   font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-weight: 600; /* เน้นตัวหนาให้อ่านง่าย */
+  letter-spacing: 0.02em;
 }
 .stamp-paid {
   color: var(--success);
@@ -137,30 +148,35 @@ h1, h2, h3 {
   background: var(--warning-tint);
 }
 
-/* ---- reusable surfaces ---- */
+/* ---- ชิ้นงานการ์ดพื้นผิวสัมผัสลอยตัว ---- */
 .card {
   background: var(--paper-raised);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.6); /* ใช้ขอบกึ่งโปร่งใสช่วยลดความแข็ง */
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+  backdrop-filter: blur(8px); /* เพิ่มลูกเล่นกระจกแก้วเบาๆ ให้กล่องข้อความ */
 }
 
 .card-elevated {
   background: var(--paper-raised);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-elevated);
 }
 
+/* ---- ปุ่มกดยอดฮิต ---- */
 .btn-primary {
   background: var(--accent);
   color: white;
   border-radius: var(--radius-control);
   font-weight: 600;
-  transition: background 0.15s ease;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent); /* เพิ่มเงาสะท้อนใต้ปุ่มเพิ่มความโปร */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .btn-primary:hover {
   background: var(--accent-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 :focus-visible {
@@ -175,25 +191,25 @@ h1, h2, h3 {
   }
 }
 
-/* ---- notification animations ---- */
+/* ---- โหมดแอนิเมชันนุ่มนวลสมูทสไตล์แอปเปิ้ล ---- */
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: scale(0.95) translateY(10px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: scale(1) translateY(0);
   }
 }
 .animate-toast-in {
-  animation: toast-in 0.22s ease-out;
+  animation: toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes modal-in {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(4px);
+    transform: scale(0.95) translateY(6px);
   }
   to {
     opacity: 1;
@@ -201,5 +217,5 @@ h1, h2, h3 {
   }
 }
 .animate-modal-in {
-  animation: modal-in 0.16s ease-out;
+  animation: modal-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
 }
