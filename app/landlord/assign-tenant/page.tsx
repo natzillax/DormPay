@@ -51,8 +51,9 @@ export default function AdminAssignTenantPage() {
             const adminEmails = ["nantharat.nat@gmail.com", "landlord@dorm.com"]; // 🔥 เปลี่ยนเป็นอีเมลแอดมินของคุณตรงนี้ครับ
 
             const freshUsers = allUsers?.filter((u) => {
-                // เลือกคนที่มีสถานะ PENDING, ยังไม่มีห้องพัก และอีเมลต้องไม่อยู่ในกลุ่มแอดมิน
-                return u.status === "PENDING" && !u.room_id && !adminEmails.includes(u.email);
+                // ดึงคนที่ไม่มี room_id ผูกอยู่ (ไม่ว่าจะสถานะ PENDING หรือ ACTIVE) และไม่ใช่อีเมลแอดมิน
+                const isNewOrNoRoom = (!u.room_id) || u.status === "PENDING";
+                return isNewOrNoRoom && !adminEmails.includes(u.email);
             }) || []
 
             setPendingUsers(freshUsers)

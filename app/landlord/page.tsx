@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
-import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useSession } from "next-auth/react" // ✨ นำเข้า useSession เพื่อดึงสิทธิ์แอดมิน
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,15 +12,15 @@ const supabase = createClient(
 )
 
 export default function LandlordPage() {
-    const { data: session, status } = useSession()
     const router = useRouter()
+    const { data: session, status } = useSession() // ✨ เรียกใช้งานเซสชันปัจจุบันของระบบ
 
     const [invoices, setInvoices] = useState<any[]>([])
     const [rooms, setRooms] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-    // 💰 กำหนดราคาค่าน้ำค่าไฟต่อหน่วยไว้ตรงนี้ (สามารถแก้ไขตัวเลขได้ตามต้องการ)
+    // 💰 กำหนดราคาค่าน้ำค่าไฟต่อหน่วยไว้ตรงนี้
     const WATER_RATE = 18;   // ค่าน้ำหน่วยละ 18 บาท
     const ELECTRIC_RATE = 7; // ค่าไฟหน่วยละ 7 บาท
 
@@ -114,16 +115,13 @@ export default function LandlordPage() {
 
     const totalAmount = rPrice + wPrice + ePrice
 
-    // 📩 ฟังก์ชันจำลองการส่งอีเมลแจ้งเตือนผู้เช่า (สามารถเชื่อมต่อ API เช่น Nodemailer, Resend หรือ SendGrid ได้ตรงนี้)
+    // 📩 ฟังก์ชันจำลองการส่งอีเมลแจ้งเตือนผู้เช่า
     const sendEmailNotification = async (email: string, roomNumber: string, amount: number, currentMonth: number) => {
         try {
             console.log(`📧 กำลังส่งอีเมลแจ้งค่าหอไปยัง: ${email}`);
-
-            // 📝 ตัวอย่างข้อมูลที่เราจะส่ง (Subject & Body)
             const subject = `📢 แจ้งยอดชำระค่าหอพัก ห้อง ${roomNumber} ประจำเดือน ${currentMonth}`;
             const message = `เรียน ผู้เช่าห้อง ${roomNumber}\n\nขณะนี้บิลค่าหอพักประจำเดือนได้ออกเรียบร้อยแล้ว\nยอดเงินที่ต้องชำระสุทธิ: ฿${amount.toLocaleString()} บาท\n\nกรุณาเข้าสู่ระบบ DormPay เพื่อตรวจสอบรายละเอียดและแนบสลิปหลักฐานการโอนเงินภายใน 7 วันค่ะ\n\nขอบคุณค่ะ\nระบบ DormPay Admin`;
 
-            // 🔥 ยิงไปหาหลังบ้าน Next.js เพื่อส่งเมลจริง
             const response = await fetch('/api/sendEmail', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -135,7 +133,6 @@ export default function LandlordPage() {
             });
 
             const result = await response.json();
-
             if (response.ok) {
                 console.log("✅ อีเมลถูกส่งไปยังผู้เช่าเรียบร้อยแล้วจริงๆ!", result);
             } else {
@@ -146,7 +143,7 @@ export default function LandlordPage() {
         }
     }
 
-    // 4. ฟังก์ชันสร้างใบแจ้งหนี้ใบใหม่ส่งให้ผู้เช่า (เวอร์ชันเพิ่มระบบส่งอีเมล)
+    // 4. ฟังก์ชันสร้างใบแจ้งหนี้ใบใหม่ส่งให้ผู้เช่า
     const handleCreateInvoice = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedRoomId) return alert("กรุณาเลือกห้องพักก่อนจ้า!")
@@ -157,13 +154,11 @@ export default function LandlordPage() {
         try {
             if (!targetRoom) throw new Error("ไม่พบข้อมูลห้องพักที่เลือก")
 
-            // 🔍 1. ไปดึงข้อมูลอีเมลของผู้เช่าห้องนี้มาจากตาราง users (หรือตารางที่คุณใช้เก็บข้อมูลผู้เช่า)
-            // สมมติว่าในตาราง users มีคอลัมน์ room_id ผูกอยู่กับห้องพัก
             const { data: userData, error: userError } = await supabase
                 .from("users")
-                .select("email, name")
+                .select("id, email, name")
                 .eq("room_id", selectedRoomId)
-                .single(); // ดึงมาแค่คนเดียวที่เป็นผู้เช่าห้องนี้
+                .maybeSingle();
 
             if (userError) {
                 console.warn("⚠️ ไม่พบอีเมลผู้เช่าสำหรับห้องนี้ หรือยังไม่มีผู้เช่าเข้าอยู่:", userError.message);
@@ -172,11 +167,11 @@ export default function LandlordPage() {
             const dueDate = new Date()
             dueDate.setDate(dueDate.getDate() + 7)
 
-            // 2. บันทึกบิลลงตาราง invoices
             const { error } = await supabase
                 .from("invoices")
                 .insert([{
                     room_id: selectedRoomId,
+                    //user_id: userData?.id || null, // 👈 บันทึก id ของผู้เช่าผูกติดไปกับบิลใบนี้เลย ✨
                     room_price: rPrice,
                     water_price: wPrice,
                     electric_price: ePrice,
@@ -189,7 +184,6 @@ export default function LandlordPage() {
 
             if (error) throw error
 
-            // 🎉 3. ถ้าระบบพบอีเมลผู้เช่า ให้ทำการส่งอีเมลแจ้งเตือนทันที!
             if (userData && userData.email) {
                 await sendEmailNotification(userData.email, targetRoom.room_number, totalAmount, Number(month));
                 alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จ และส่งอีเมลแจ้งเตือนไปยัง ${userData.email} เรียบร้อยแล้ว! 🚀`);
@@ -197,7 +191,6 @@ export default function LandlordPage() {
                 alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จแล้ว! (แต่ไม่ได้ส่งเมลเนื่องจากไม่พบอีเมลผู้เช่าผูกกับห้องนี้) 🚀`);
             }
 
-            // ล้างฟอร์มมิเตอร์หลังจากบันทึกสำเร็จ
             setWaterPrev("")
             setWaterCurr("")
             setElectricPrev("")
@@ -212,55 +205,105 @@ export default function LandlordPage() {
         }
     }
 
-    useEffect(() => {
-
-        const checkCurrentAdmin = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        // ถ้าไม่มีการล็อกอินค้างไว้ หรือไม่มีสิทธิ์ ให้เด้งไปหน้าล็อกอินแอดมินทันที
-        if (!user) {
-            router.push("/admin-login")
-            return
-        }
-
-        const { data: userData } = await supabase
-            .from("users")
-            .select("role")
-            .eq("id", user.id)
-            .single()
-
-        if (userData?.role !== "ADMIN") {
-            router.push("/admin-login")
-            return
-        }
-
-        // ดึงข้อมูลค่าน้ำไฟต่อ...
-        Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
+    // 🚪 5. ฟังก์ชัน Logout ฝั่ง Admin ปรับปรุงใหม่ให้ใช้งานร่วมกับ Next-Auth อย่างปลอดภัย
+    const handleAdminLogout = async () => {
+        localStorage.removeItem("admin_email");
+        const { signOut } = await import("next-auth/react")
+        await signOut({ callbackUrl: "/admin-login" })
     }
 
-    checkCurrentAdmin()
-}, [router])
+    // 🛡️ ปรับปรุงจุดเช็คสิทธิ์ให้เช็ค Session คู่กับระบบ Fallback Backup กันหลุดซ้ำซ้อน
+    useEffect(() => {
+        const checkCurrentAdmin = async () => {
+            // ⏳ ถ้าระบบ Next-Auth กำลังดึงเซสชันอยู่ ให้รอก่อน
+            if (status === "loading") return
 
+            // เช็คจาก Session หลักของระบบก่อน
+            if (!session || session.user?.role !== "ADMIN") {
+
+                // 🔄 แผนสำรอง (Fallback): เช็คจาก LocalStorage ย้อนกลับไปตรวจในตาราง users เผื่อค่าดีเลย์
+                const savedEmail = localStorage.getItem("admin_email")
+
+                if (savedEmail) {
+                    const { data: userData } = await supabase
+                        .from("users")
+                        .select("role")
+                        .eq("email", savedEmail)
+                        .maybeSingle()
+
+                    if (userData?.role === "ADMIN") {
+                        // ถ้าในฐานข้อมูลยืนยันว่าเป็นแอดมินตัวจริง ยอมรับและเปิดข้อมูลหน้าเพจต่อ
+                        Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
+                        return
+                    }
+                }
+
+                // 🚨 ถ้าตรวจทุกทางแล้วไม่มีสิทธิ์จริงๆ ดีดกลับหน้า login แอดมินทันที
+                console.log("🚨 สิทธิ์ไม่ถูกต้อง หรือไม่ใช่แอดมินตัวจริง");
+                router.replace("/admin-login")
+                return
+            }
+
+            // 👑 สิทธิ์ถูกต้อง (เป็น ADMIN) โหลดตารางขึ้นหน้าจอได้เลยครับ
+            Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
+        }
+
+        checkCurrentAdmin()
+    }, [session, status, router])
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-100 flex items-center justify-center text-black">
+                <p className="font-semibold text-gray-500">กำลังตรวจสอบข้อมูลสิทธิ์แอดมิน...</p>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-screen bg-gray-100 p-6 text-black">
             <div className="mx-auto max-w-5xl">
 
                 {/* Header ส่วนบน */}
-                <div className="flex items-center justify-between border-b pb-4 mb-6 bg-white p-6 rounded-xl shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-4 mb-6 bg-white p-6 rounded-xl shadow-sm gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-800">🫅 แดชบอร์ดเจ้าของหอพัก (DormPay Admin)</h1>
                         <p className="text-sm text-gray-500">ระบบจัดการออกบิลค่าน้ำค่าไฟ และตรวจสอบสลิป</p>
                     </div>
-                    <button
-                        onClick={() => signOut({ callbackUrl: "/" })}
-                        className="rounded-md bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition"
-                    >
-                        ออกจากระบบ
-                    </button>
+
+                    {/* กลุ่มลิงก์เมนูเพื่อสลับหน้า */}
+                    {/* 🛠️ ปรับ Flexbox ให้ดันปุ่มออกจากระบบไปขวาสุด และลด padding ปุ่มเล็กลงเพื่อไม่ให้ตกบรรทัด */}
+                    <div className="flex items-center justify-between w-full md:w-auto flex-nowrap overflow-x-auto gap-1.5 pb-1">
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                            <Link href="/landlord/assign-tenant">
+                                <button className="rounded-md bg-blue-50 px-2.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 border border-blue-200 transition whitespace-nowrap">
+                                    🔗 ผูกห้องพัก
+                                </button>
+                            </Link>
+
+                            <Link href="/landlord/manage-tenants">
+                                <button className="rounded-md bg-purple-50 px-2.5 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 border border-purple-200 transition whitespace-nowrap">
+                                    📋 แจ้งย้ายออก
+                                </button>
+                            </Link>
+
+                            <Link href="/landlord/revenue">
+                                <button className="rounded-md bg-green-50 px-2.5 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 border border-green-200 transition whitespace-nowrap">
+                                    📊 รายได้
+                                </button>
+                            </Link>
+                        </div>
+
+                        {/* ปุ่มนี้จะขยับไปชิดขวาสุด และขนาดกระชับพอดีบรรทัด */}
+                        <button
+                            onClick={handleAdminLogout}
+                            className="rounded-md bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition shadow-sm whitespace-nowrap ml-2"
+                        >
+                            ออกจากระบบ
+                        </button>
+                    </div>
                 </div>
 
-                {/* 🏗️ ฟอร์มออกบิลค่าน้ำค่าไฟใหม่ (ปรับปรุงเป็นระบบกรอกหน่วยมิเตอร์) */}
+                {/* ฟอร์มออกบิลค่าน้ำค่าไฟใหม่ */}
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200 mb-6">
                     <h2 className="text-lg font-bold mb-4 text-gray-700">📝 ออกใบแจ้งหนี้ประจำเดือนใหม่ (ระบบคํานวณมิเตอร์อัตโนมัติ)</h2>
                     <form onSubmit={handleCreateInvoice} className="space-y-4 text-sm">
@@ -316,7 +359,7 @@ export default function LandlordPage() {
                         )}
 
                         <div className="grid gap-4 sm:grid-cols-2">
-                            {/* 💧 ส่วนกรอกข้อมูลน้ำ */}
+                            {/* ส่วนกรอกข้อมูลน้ำ */}
                             <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40">
                                 <h3 className="font-bold text-blue-600 mb-2">💧 มิเตอร์น้ำประปา (หน่วยละ ฿{WATER_RATE})</h3>
                                 <div className="grid grid-cols-2 gap-2">
@@ -348,7 +391,7 @@ export default function LandlordPage() {
                                 )}
                             </div>
 
-                            {/* ⚡ ส่วนกรอกข้อมูลไฟ */}
+                            {/* ส่วนกรอกข้อมูลไฟ */}
                             <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/40">
                                 <h3 className="font-bold text-amber-600 mb-2">⚡ มิเตอร์ไฟฟ้า (หน่วยละ ฿{ELECTRIC_RATE})</h3>
                                 <div className="grid grid-cols-2 gap-2">
@@ -381,7 +424,7 @@ export default function LandlordPage() {
                             </div>
                         </div>
 
-                        {/* 💰 สรุปยอดรวมท้ายฟอร์ม */}
+                        {/* สรุปยอดรวมท้ายฟอร์ม */}
                         <div className="flex items-center justify-between border-t pt-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                             <div>
                                 <span className="text-xs font-bold text-gray-500 block uppercase">ยอดรวมใบแจ้งหนี้ทั้งหมด:</span>
@@ -399,7 +442,7 @@ export default function LandlordPage() {
                     </form>
                 </div>
 
-                {/* ตารางรายการห้องที่รอตรวจสอบ (ส่วนนี้เหมือนเดิมร้อยเปอร์เซ็นต์ครับ) */}
+                {/* ตารางรายการห้องที่รอตรวจสอบ */}
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
                     <h2 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
                         ⏳ รายการบิลรอการตรวจสอบ ({invoices.length} ห้อง)

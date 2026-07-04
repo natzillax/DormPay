@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -107,6 +108,17 @@ export default function LoginPage() {
           >
             {loading ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
           </button>
+
+          {/* 🚀 เพิ่มลิงก์วาร์ปไปหน้าสมัครสมาชิกใต้ปุ่มล็อกอิน */}
+          <div className="text-center mt-4 text-sm text-gray-600">
+            ยังไม่มีบัญชีผู้เช่าใช่ไหม?{" "}
+            <Link 
+              href="/signup" 
+              className="text-blue-600 font-semibold hover:underline">
+              สมัครสมาชิกใหม่
+            </Link>
+          </div>
+
         </form>
       </div>
     </div>
