@@ -3,14 +3,17 @@
 import argon2 from "argon2"
 import { createClient } from "@supabase/supabase-js"
 
-// เรียกใช้งาน Supabase Client ฝั่ง Server
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+
 
 // 🚀 1. ฟังก์ชันสมัครสมาชิก (สำหรับหน้า /signup)
 export async function registerUser({ email, password, name }: { email: string; password: string; name: string }) {
+
+    // เรียกใช้งาน Supabase Client ฝั่ง Server
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
     if (!email || !password) {
         return { success: false, message: "กรุณากรอกข้อมูลให้ครบถ้วน" }
     }
@@ -40,7 +43,7 @@ export async function registerUser({ email, password, name }: { email: string; p
             }
             throw error
         }
-        
+
         return { success: true, message: "สมัครสมาชิกสำเร็จ รอยืนยันจากแอดมิน" }
 
     } catch (error: any) {
@@ -51,6 +54,13 @@ export async function registerUser({ email, password, name }: { email: string; p
 
 // 🚀 2. ฟังก์ชันเข้าสู่ระบบ (สำหรับหน้า /login)
 export async function loginUser(formData: FormData) {
+
+    // 💡 สร้างสิทธิ์ภายในฟังก์ชันล็อกอินเช่นกัน
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
     const email = formData.get("email") as string
     const password = formData.get("password") as string
 
