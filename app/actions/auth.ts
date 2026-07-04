@@ -69,18 +69,23 @@ export async function loginUser(formData: FormData) {
         const { data: user, error } = await supabase
             .from("users")
             .select("*")
-            .ilike("email", email) // 💡 ค้นหาโดยไม่สนใจว่าจะเป็นตัวพิมพ์เล็กหรือพิมพ์ใหญ่ (Case-Insensitive)
+            .ilike("email", email)
             .maybeSingle()
 
-        if (error || !user) {
-            return { success: false, message: "ไม่พบอีเมลนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง" }
+        if (error) {
+            return { success: false, message: "Supabase Error: " + error.message }
         }
 
-        // 🔐 ใช้ argon2.verify เพื่อเทียบรหัสผ่านดิบกับรหัสที่แฮชไว้ในเบส
+        // 💡 1. แยกเช็กอีเมลก่อนเลย
+        if (!user) {
+            return { success: false, message: "ไม่พบอีเมลนี้ในระบบแปลงค่า" }
+        }
+
+        // 🔐 2. เช็กรหัสผ่านทีหลัง
         const isPasswordValid = await argon2.verify(user.password, password)
 
         if (!isPasswordValid) {
-            return { success: false, message: "รหัสผ่านไม่ถูกต้อง" }
+            return { success: false, message: "รหัสผ่านไม่ถูกต้อง (Argon2 Verify Failed)" }
         }
 
         // ✅ แก้ไขการปิดวงเล็บและส่งโครงสร้างข้อมูลผู้ใช้ออกไปให้ถูกต้อง
