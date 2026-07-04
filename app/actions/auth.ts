@@ -69,7 +69,7 @@ export async function loginUser(formData: FormData) {
         const { data: user, error } = await supabase
             .from("users")
             .select("*")
-            .eq("email", email)
+            .ilike("email", email) // 💡 ค้นหาโดยไม่สนใจว่าจะเป็นตัวพิมพ์เล็กหรือพิมพ์ใหญ่ (Case-Insensitive)
             .maybeSingle()
 
         if (error || !user) {
