@@ -1,15 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { loginUser } from "../actions/auth"
-
-// const supabase = createClient(
-//   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-//   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-// )
 
 export default function LoginPage() {
   const router = useRouter()
@@ -44,9 +38,9 @@ export default function LoginPage() {
       if (user.role === "ADMIN") {
         router.push("/landlord/dashboard") // ย้ายไปหน้าแดชบอร์ดเจ้าของหอพัก
       } else if (user.status === "PENDING") {
-        setErrorMsg("⏳ บัญชีของคุณอยู่ระหว่างรอเจ้าของหอพักผูกห้องพัก กรุณาติดต่อแอดมินครับ")
+        setErrorMsg("บัญชีของคุณอยู่ระหว่างรอเจ้าของหอพักผูกห้องพัก กรุณาติดต่อแอดมิน")
       } else if (user.status === "MOVED_OUT") {
-        setErrorMsg("❌ บัญชีนี้สิ้นสุดสัญญาเช่าแล้ว ไม่สามารถเข้าสู่ระบบได้")
+        setErrorMsg("บัญชีนี้สิ้นสุดสัญญาเช่าแล้ว ไม่สามารถเข้าสู่ระบบได้")
       } else {
         // บันทึกสถานะผู้เช่าลง LocalStorage ตามระบบเดิมของคุณ
         localStorage.setItem("tenant_room_id", user.room_id || "")
@@ -65,62 +59,102 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-pink-50 flex items-center justify-center p-4 text-black">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-md p-8 border border-gray-100">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">🏢 เข้าสู่ระบบหอพัก (DormPay)</h1>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">อีเมลผู้ใช้งาน</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@gmail.com"
-              className="w-full border border-gray-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">รหัสผ่านส่วนตัว</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-gray-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          {errorMsg && (
-            <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg font-medium">
-              {errorMsg}
+    <div className="relative min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="card-elevated p-8">
+          <div className="text-center mb-7">
+            <div
+              className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full"
+              style={{ background: "var(--accent-tint)" }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3l8 4v5c0 4.5-3.2 8.3-8 9-4.8-.7-8-4.5-8-9V7l8-4z"
+                  stroke="var(--accent)"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+                <path d="M9.5 12l1.8 1.8L15 10" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition disabled:bg-gray-400"
-          >
-            {loading ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
-          </button>
-
-          {/* 🚀 เพิ่มลิงก์วาร์ปไปหน้าสมัครสมาชิกใต้ปุ่มล็อกอิน */}
-          <div className="text-center mt-4 text-sm text-gray-600">
-            ยังไม่มีบัญชีผู้เช่าใช่ไหม?{" "}
-            <Link 
-              href="/signup" 
-              className="text-blue-600 font-semibold hover:underline">
-              สมัครสมาชิกใหม่
-            </Link>
+            <h1 className="text-xl font-semibold text-ink">DormPay</h1>
+            <p className="mt-1 text-sm text-ink-soft">เข้าสู่ระบบหอพัก</p>
           </div>
 
-        </form>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-soft">
+                อีเมลผู้ใช้งาน
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="example@gmail.com"
+                className="w-full rounded-[var(--radius-control)] border px-3.5 py-2.5 text-ink outline-none transition"
+                style={{ borderColor: "var(--line)" }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-soft">
+                รหัสผ่านส่วนตัว
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-[var(--radius-control)] border px-3.5 py-2.5 text-ink outline-none transition"
+                style={{ borderColor: "var(--line)" }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+                required
+              />
+            </div>
+
+            {errorMsg && (
+              <div
+                role="alert"
+                className="rounded-lg border-l-4 p-3 text-sm"
+                style={{ borderLeftColor: "var(--danger)", background: "var(--danger-tint)", color: "var(--danger)" }}
+              >
+                {errorMsg}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-2.5 disabled:opacity-60"
+            >
+              {loading ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
+            </button>
+
+            {/* 🚀 ลิงก์วาร์ปไปหน้าสมัครสมาชิกใต้ปุ่มล็อกอิน */}
+            <div className="mt-4 text-center text-sm text-ink-soft">
+              ยังไม่มีบัญชีผู้เช่าใช่ไหม?{" "}
+              <Link href="/signup" className="font-semibold" style={{ color: "var(--accent)" }}>
+                สมัครสมาชิกใหม่
+              </Link>
+            </div>
+
+            <div className="text-center">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft transition hover:text-ink"
+              >
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M12 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                กลับหน้าแรก
+              </Link>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { SessionProvider } from "next-auth/react"
+import { NotificationProvider } from "@/components/NotificationProvider"
 import "./globals.css"
 
 export default function RootLayout({
@@ -7,11 +8,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="th">
       <body>
-        {/* ครอบเพื่อให้ทุกๆ หน้าดึงข้อมูลคนล็อกอินไปใช้ได้ */}
         <SessionProvider>
-          {children}
+          <NotificationProvider>
+            {children}
+          </NotificationProvider>
         </SessionProvider>
       </body>
     </html>

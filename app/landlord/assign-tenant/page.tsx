@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
+import Link from "next/link"
+import { useToast } from "@/components/NotificationProvider"
+import LoadingScreen from "@/components/LoadingScreen"
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,6 +12,7 @@ const supabase = createClient(
 )
 
 export default function AdminAssignTenantPage() {
+    const toast = useToast()
     const [rooms, setRooms] = useState<any[]>([])           // รายการห้องพักทั้งหมด
     const [pendingUsers, setPendingUsers] = useState<any[]>([]) // รายชื่อคนเช่าใหม่ที่สถานะ PENDING
     const [selectedRoom, setSelectedRoom] = useState<string>("")
@@ -60,7 +64,7 @@ export default function AdminAssignTenantPage() {
 
         } catch (error: any) {
             console.error("❌ ดึงข้อมูลไม่สำเร็จ:", error.message)
-            alert("เกิดข้อผิดพลาดในการดึงข้อมูล")
+            toast.error("เกิดข้อผิดพลาดในการดึงข้อมูล")
         } finally {
             setLoading(false)
         }
@@ -73,7 +77,7 @@ export default function AdminAssignTenantPage() {
     // ฟังก์ชันผูกห้องพักให้ผู้เช่าใหม่
     const handleAssignTenant = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!selectedRoom || !selectedUser) return alert("กรุณาเลือกห้องพักและผู้เช่าก่อนครับ")
+        if (!selectedRoom || !selectedUser) return toast.error("กรุณาเลือกห้องพักและผู้เช่าก่อน")
 
         setSubmitting(true)
         try {
@@ -96,78 +100,112 @@ export default function AdminAssignTenantPage() {
 
             if (roomUpdateError) throw roomUpdateError
 
-            alert("🎉 ผูกผู้เช่าเข้ากับห้องพักสำเร็จแล้ว!")
+            toast.success("ผูกผู้เช่าเข้ากับห้องพักสำเร็จแล้ว 🎉")
             setSelectedRoom("")
             setSelectedUser("")
             fetchData() // รีโหลดข้อมูลใหม่
 
         } catch (error: any) {
-            alert("เกิดข้อผิดพลาด: " + error.message)
+            toast.error("เกิดข้อผิดพลาด: " + error.message)
         } finally {
             setSubmitting(false)
         }
     }
 
     if (loading) {
-        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดระบบผูกบัญชี...</div>
+        return <LoadingScreen message="กำลังโหลดระบบผูกบัญชี..." />
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8 text-black">
-            <div className="mx-auto max-w-2xl bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">🤝 ระบบจัดการและผูกบัญชีผู้เช่า</h1>
-                <p className="text-sm text-gray-500 mb-6">เลือกผู้เช่าใหม่ที่สมัครเข้ามาในระบบเพื่อผูกเข้ากับห้องพักที่ยังว่าง</p>
+        <div className="min-h-screen p-8">
+            <div className="mx-auto max-w-2xl">
+                <Link
+                    href="/landlord"
+                    className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft transition hover:text-ink"
+                >
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M12 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    กลับไปหน้าแดชบอร์ด
+                </Link>
 
-                <form onSubmit={handleAssignTenant} className="space-y-5">
-                    {/* เลือกห้องพัก */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">🏢 เลือกห้องพัก</label>
-                        <select
-                            value={selectedRoom}
-                            onChange={(e) => setSelectedRoom(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 p-2.5 bg-white focus:ring-2 focus:ring-blue-500"
-                            required
+                <div className="card-elevated p-8">
+                    <div className="mb-6">
+                        <div
+                            className="mb-4 flex h-11 w-11 items-center justify-center rounded-full"
+                            style={{ background: "var(--accent-tint)" }}
                         >
-                            <option value="">-- เลือกห้องพัก --</option>
-                            {rooms.map((room) => (
-                                <option key={room.id} value={room.id} disabled={room.isOccupied}>
-                                    ห้อง {room.room_number} {room.isOccupied ? "(❌ ไม่ว่าง)" : "(🟢 ว่าง)"}
-                                </option>
-                            ))}
-                        </select>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle cx="8" cy="9" r="3" stroke="var(--accent)" strokeWidth="1.6" />
+                                <path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
+                                <path d="M15 8.5h4M17 6.5v4" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" />
+                            </svg>
+                        </div>
+                        <h1 className="text-xl font-semibold text-ink">จัดการและผูกบัญชีผู้เช่า</h1>
+                        <p className="mt-1 text-sm text-ink-soft">เลือกผู้เช่าใหม่ที่สมัครเข้ามาในระบบเพื่อผูกเข้ากับห้องพักที่ยังว่าง</p>
                     </div>
 
-                    {/* เลือกผู้เช่าใหม่ */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">👤 เลือกผู้เช่าใหม่ที่รอจับคู่ห้อง</label>
-                        <select
-                            value={selectedUser}
-                            onChange={(e) => setSelectedUser(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 p-2.5 bg-white focus:ring-2 focus:ring-blue-500"
-                            required
-                        >
-                            <option value="">-- เลือกบัญชีผู้เช่า --</option>
-                            {pendingUsers.length === 0 ? (
-                                <option disabled>❌ ไม่มีผู้เช่าใหม่สมัครเข้ามาชั่วคราว</option>
-                            ) : (
-                                pendingUsers.map((user) => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.name || "ไม่ระบุชื่อ"} ({user.email})
+                    <form onSubmit={handleAssignTenant} className="space-y-5">
+                        {/* เลือกห้องพัก */}
+                        <div>
+                            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-soft">
+                                เลือกห้องพัก
+                            </label>
+                            <select
+                                value={selectedRoom}
+                                onChange={(e) => setSelectedRoom(e.target.value)}
+                                className="w-full rounded-[var(--radius-control)] border px-3.5 py-2.5 text-ink outline-none transition"
+                                style={{ borderColor: "var(--line)" }}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+                                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+                                required
+                            >
+                                <option value="">-- เลือกห้องพัก --</option>
+                                {rooms.map((room) => (
+                                    <option key={room.id} value={room.id} disabled={room.isOccupied}>
+                                        ห้อง {room.room_number} {room.isOccupied ? "(ไม่ว่าง)" : "(ว่าง)"}
                                     </option>
-                                ))
-                            )}
-                        </select>
-                    </div>
+                                ))}
+                            </select>
+                        </div>
 
-                    {/* ปุ่มกดบันทึก */}
-                    <button
-                        type="submit"
-                        disabled={submitting || pendingUsers.length === 0}
-                        className="w-full rounded-lg bg-blue-600 py-3 font-bold text-white hover:bg-blue-700 transition shadow-sm disabled:bg-gray-300 text-sm"
-                    >
-                        {submitting ? "กำลังบันทึกโครงสร้าง..." : "🤝 ยืนยันการผูกผู้เช่าเข้าห้อง"}
-                    </button>
-                </form>
+                        {/* เลือกผู้เช่าใหม่ */}
+                        <div>
+                            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-soft">
+                                เลือกผู้เช่าใหม่ที่รอจับคู่ห้อง
+                            </label>
+                            <select
+                                value={selectedUser}
+                                onChange={(e) => setSelectedUser(e.target.value)}
+                                className="w-full rounded-[var(--radius-control)] border px-3.5 py-2.5 text-ink outline-none transition"
+                                style={{ borderColor: "var(--line)" }}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent)")}
+                                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+                                required
+                            >
+                                <option value="">-- เลือกบัญชีผู้เช่า --</option>
+                                {pendingUsers.length === 0 ? (
+                                    <option disabled>ไม่มีผู้เช่าใหม่สมัครเข้ามาชั่วคราว</option>
+                                ) : (
+                                    pendingUsers.map((user) => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.name || "ไม่ระบุชื่อ"} ({user.email})
+                                        </option>
+                                    ))
+                                )}
+                            </select>
+                        </div>
+
+                        {/* ปุ่มกดบันทึก */}
+                        <button
+                            type="submit"
+                            disabled={submitting || pendingUsers.length === 0}
+                            className="btn-primary w-full py-2.5 disabled:opacity-60"
+                        >
+                            {submitting ? "กำลังบันทึกโครงสร้าง..." : "ยืนยันการผูกผู้เช่าเข้าห้อง"}
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     )

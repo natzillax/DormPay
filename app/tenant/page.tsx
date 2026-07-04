@@ -4,6 +4,8 @@
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js"
+import { useToast } from "@/components/NotificationProvider"
+import LoadingScreen from "@/components/LoadingScreen"
 
 // 📦 Import ชิ้นส่วน UI ที่เราแยกออกมา
 import TenantHeader from "./TenantHeader"
@@ -18,6 +20,7 @@ const supabase = createClient(
 
 export default function TenantDashboardPage() {
     const router = useRouter()
+    const toast = useToast()
     const [tenantName, setTenantName] = useState<string>("กำลังโหลด...")
     const [invoice, setInvoice] = useState<any>(null) 
     const [paidInvoices, setPaidInvoices] = useState<any[]>([]) 
@@ -63,7 +66,7 @@ export default function TenantDashboardPage() {
 
     const handleUploadSlip = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!file || !invoice) return alert("กรุณาเลือกไฟล์สลิปก่อนนะจ๊ะ!")
+        if (!file || !invoice) return toast.error("กรุณาเลือกไฟล์สลิปก่อน")
 
         setUploading(true)
         try {
@@ -88,12 +91,12 @@ export default function TenantDashboardPage() {
                 slip_url: publicUrl           
             }])
 
-            alert("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะจ๊ะ 🎉")
+            toast.success("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะ 🎉")
             setFile(null)
             fetchInvoiceData(localStorage.getItem("tenant_user_id") || "")
 
         } catch (error: any) {
-            alert("เกิดข้อผิดพลาดในการอัปโหลด: " + error.message)
+            toast.error("เกิดข้อผิดพลาดในการอัปโหลด: " + error.message)
         } finally {
             setUploading(false)
         }
@@ -125,11 +128,11 @@ export default function TenantDashboardPage() {
     }
 
     if (loading) {
-        return <div className="flex min-h-screen items-center justify-center text-black">กำลังโหลดข้อมูลห้องพักของคุณ...</div>
+        return <LoadingScreen message="กำลังโหลดข้อมูลห้องพักของคุณ..." />
     }
 
     return (
-        <div className="min-h-screen bg-gray-100 p-6 text-black">
+        <div className="min-h-screen p-6">
             <div className="mx-auto max-w-4xl">
                 {/* 🧩 ประกอบชิ้นส่วนต่าง ๆ เข้าด้วยกัน */}
                 <TenantHeader tenantName={tenantName} onLogout={handleLogout} />

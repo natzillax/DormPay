@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useToast, useConfirm } from "@/components/NotificationProvider"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +25,8 @@ interface Tenant {
 
 export default function ManageTenantsPage() {
   const router = useRouter()
+  const toast = useToast()
+  const confirm = useConfirm()
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -44,7 +48,7 @@ export default function ManageTenantsPage() {
 
       setTenants((data as any) || [])
     } catch (error: any) {
-      alert("โหลดข้อมูลผู้เช่าล้มเหลว: " + error.message)
+      toast.error("โหลดข้อมูลผู้เช่าล้มเหลว: " + error.message)
     } finally {
       setLoading(false)
     }
@@ -57,11 +61,16 @@ export default function ManageTenantsPage() {
   // 🎯 3. ฟังก์ชันหลักสำหรับปุ่ม "แจ้งย้ายออก" (คงเดิมไว้)
   const handleMoveOut = async (tenantId: string, roomId: string | null) => {
     if (!roomId) {
-      alert("❌ ผู้เช่าคนนี้ไม่ได้ผูกกับห้องพักใดๆ")
+      toast.error("ผู้เช่าคนนี้ไม่ได้ผูกกับห้องพักใดๆ")
       return
     }
 
-    const confirmAction = window.confirm("คุณต้องการแจ้งย้ายผู้เช่าคนนี้ออกจากห้องพักใช่หรือไม่? (ห้องจะกลับมาว่างทันที)")
+    const confirmAction = await confirm({
+      title: "แจ้งย้ายออก?",
+      message: "ห้องจะกลับมาว่างทันที และผู้เช่าจะถูกตัดออกจากห้องนี้",
+      confirmLabel: "แจ้งย้ายออก",
+      tone: "danger",
+    })
     if (!confirmAction) return
 
     try {
@@ -84,63 +93,84 @@ export default function ManageTenantsPage() {
 
       if (roomError) throw roomError
 
-      alert("🎉 แจ้งย้ายออกและเคลียร์สถานะห้องว่างสำเร็จแล้ว!")
+      toast.success("แจ้งย้ายออกและเคลียร์สถานะห้องว่างสำเร็จแล้ว 🎉")
       fetchActiveTenants() 
       router.refresh()
 
     } catch (error: any) {
-      alert("เกิดข้อผิดพลาดระหว่างย้ายออก: " + error.message)
+      toast.error("เกิดข้อผิดพลาดระหว่างย้ายออก: " + error.message)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 text-black">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        <h1 className="text-2xl font-bold mb-4 text-gray-800">📋 ระบบจัดการผู้เช่าแจ้งย้ายออก (ขาออก)</h1>
-        <p className="text-sm text-gray-500 mb-6">รายชื่อผู้เช่าที่กำลังเข้าพักในปัจจุบัน คลิกปุ่มเพื่อเคลียร์ห้องคืน</p>
+    <div className="min-h-screen p-6">
+      <div className="max-w-4xl mx-auto">
+        <Link
+          href="/landlord"
+          className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-soft transition hover:text-ink"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12 15l-5-5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          กลับไปหน้าแดชบอร์ด
+        </Link>
 
-        {loading ? (
-          <p className="text-center text-gray-500">กำลังโหลดรายชื่อ...</p>
-        ) : tenants.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">ไม่มีผู้เช่าที่กำลังพักอยู่ในขณะนี้</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-200 text-gray-700 font-semibold text-sm">
-                  <th className="p-3 border">ชื่อ-นามสกุล</th>
-                  <th className="p-3 border">อีเมล</th>
-                  <th className="p-3 border">เลขห้อง</th>
-                  <th className="p-3 border">รหัสห้องพัก (Room ID)</th>
-                  <th className="p-3 border text-center">การจัดการ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((tenant) => (
-                  <tr key={tenant.id} className="hover:bg-gray-50 text-sm">
-                    <td className="p-3 border font-medium">{tenant.name}</td>
-                    <td className="p-3 border text-gray-600">{tenant.email}</td>
-                    
-                    {/* 💡 4. แก้ไขจุดนี้เพื่อแสดงเลขห้องที่ดึงเชื่อมมาจากตาราง rooms */}
-                    <td className="p-3 border text-blue-600 font-bold">
-                      {tenant.rooms?.room_number || "ไม่มีข้อมูลห้อง"}
-                    </td>
+        <div className="card-elevated p-6">
+          <h1 className="text-xl font-semibold text-ink mb-1">ระบบจัดการผู้เช่าแจ้งย้ายออก</h1>
+          <p className="text-sm text-ink-soft mb-6">รายชื่อผู้เช่าที่กำลังเข้าพักในปัจจุบัน คลิกปุ่มเพื่อเคลียร์ห้องคืน</p>
 
-                    <td className="p-3 border text-gray-600 font-mono text-xs">{tenant.room_id || "ไม่ได้ผูกห้อง"}</td>
-                    <td className="p-3 border text-center">
-                      <button
-                        onClick={() => handleMoveOut(tenant.id, tenant.room_id)}
-                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-1.5 px-4 rounded-lg transition duration-150 shadow-sm"
-                      >
-                        🚪 แจ้งย้ายออก
-                      </button>
-                    </td>
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 animate-pulse rounded-lg"
+                  style={{ background: "var(--line-soft)" }}
+                />
+              ))}
+            </div>
+          ) : tenants.length === 0 ? (
+            <p className="text-center text-ink-soft py-8">ไม่มีผู้เช่าที่กำลังพักอยู่ในขณะนี้</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="text-ink-soft font-semibold text-xs uppercase tracking-wide ledger-row">
+                    <th className="p-3">ชื่อ-นามสกุล</th>
+                    <th className="p-3">อีเมล</th>
+                    <th className="p-3">เลขห้อง</th>
+                    <th className="p-3">รหัสห้องพัก (Room ID)</th>
+                    <th className="p-3 text-center">การจัดการ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {tenants.map((tenant) => (
+                    <tr key={tenant.id} className="ledger-row text-sm">
+                      <td className="p-3 font-medium text-ink">{tenant.name}</td>
+                      <td className="p-3 text-ink-soft">{tenant.email}</td>
+
+                      {/* 💡 4. แก้ไขจุดนี้เพื่อแสดงเลขห้องที่ดึงเชื่อมมาจากตาราง rooms */}
+                      <td className="p-3 font-semibold" style={{ color: "var(--accent)" }}>
+                        {tenant.rooms?.room_number || "ไม่มีข้อมูลห้อง"}
+                      </td>
+
+                      <td className="p-3 font-mono text-xs text-ink-soft">{tenant.room_id || "ไม่ได้ผูกห้อง"}</td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => handleMoveOut(tenant.id, tenant.room_id)}
+                          className="rounded-[var(--radius-control)] px-4 py-1.5 text-sm font-semibold text-white transition"
+                          style={{ background: "var(--danger)" }}
+                        >
+                          แจ้งย้ายออก
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

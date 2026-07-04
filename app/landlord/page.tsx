@@ -5,6 +5,8 @@ import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
+import { useToast, useConfirm } from "@/components/NotificationProvider"
+import LoadingScreen from "@/components/LoadingScreen"
 
 // 📦 Import ชิ้นส่วนย่อยที่เราแยกออกมา (Path เดียวกันในโฟลเดอร์ landlord)
 import AdminHeader from "./AdminHeader"
@@ -19,6 +21,8 @@ const supabase = createClient(
 export default function LandlordPage() {
     const router = useRouter()
     const { data: session, status } = useSession()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [invoices, setInvoices] = useState<any[]>([])
     const [rooms, setRooms] = useState<any[]>([])
@@ -58,27 +62,40 @@ export default function LandlordPage() {
     }
 
     const handleApprove = async (invoiceId: string) => {
-        if (!confirm("คุณตรวจสอบสลิปยอดเงินถูกต้อง และต้องการอนุมัติบิลนี้ใช่หรือไม่?")) return
+        const ok = await confirm({
+            title: "ยืนยันการอนุมัติสลิป",
+            message: "คุณตรวจสอบสลิปยอดเงินถูกต้อง และต้องการอนุมัติบิลนี้ใช่หรือไม่?",
+            confirmLabel: "อนุมัติ",
+        })
+        if (!ok) return
+
         setUpdatingId(invoiceId)
         const { error } = await supabase.from("invoices").update({ status: "PAID" }).eq("id", invoiceId)
         if (!error) {
-            alert("อนุมัติยอดชำระเงินเรียบร้อยแล้วจ้า! 🎉")
+            toast.success("อนุมัติยอดชำระเงินเรียบร้อยแล้ว 🎉")
             fetchWaitingInvoices()
         } else {
-            alert("เกิดข้อผิดพลาดในการอนุมัติ: " + error.message)
+            toast.error("เกิดข้อผิดพลาดในการอนุมัติ: " + error.message)
         }
         setUpdatingId(null)
     }
 
     const handleReject = async (invoiceId: string) => {
-        if (!confirm("คุณต้องการปฏิเสธสลิปนี้เพื่อให้ผู้เช่าอัปโหลดใหม่ใช่หรือไม่?")) return
+        const ok = await confirm({
+            title: "ปฏิเสธสลิปนี้?",
+            message: "ผู้เช่าจะต้องอัปโหลดสลิปใหม่อีกครั้ง",
+            confirmLabel: "ปฏิเสธสลิป",
+            tone: "danger",
+        })
+        if (!ok) return
+
         setUpdatingId(invoiceId)
         const { error } = await supabase.from("invoices").update({ status: "PENDING", slip_url: null }).eq("id", invoiceId)
         if (!error) {
-            alert("ปฏิเสธสลิปเรียบร้อย ระบบจะแจ้งผู้เช่าให้ส่งสลิปใหม่ครับ ❌")
+            toast.success("ปฏิเสธสลิปเรียบร้อย ระบบจะแจ้งผู้เช่าให้ส่งสลิปใหม่")
             fetchWaitingInvoices()
         } else {
-            alert("เกิดข้อผิดพลาด: " + error.message)
+            toast.error("เกิดข้อผิดพลาด: " + error.message)
         }
         setUpdatingId(null)
     }
@@ -111,9 +128,9 @@ export default function LandlordPage() {
 
     const handleCreateInvoice = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!selectedRoomId) return alert("กรุณาเลือกห้องพักก่อนจ้า!")
-        if (Number(waterCurr) < Number(waterPrev)) return alert("❌ เลขมิเตอร์น้ำครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้นะครับ")
-        if (Number(electricCurr) < Number(electricPrev)) return alert("❌ เลขมิเตอร์ไฟครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้นะครับ")
+        if (!selectedRoomId) return toast.error("กรุณาเลือกห้องพักก่อน")
+        if (Number(waterCurr) < Number(waterPrev)) return toast.error("เลขมิเตอร์น้ำครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้")
+        if (Number(electricCurr) < Number(electricPrev)) return toast.error("เลขมิเตอร์ไฟครั้งนี้ น้อยกว่าครั้งก่อนไม่ได้")
 
         setCreating(true)
         try {
@@ -139,15 +156,15 @@ export default function LandlordPage() {
 
             if (userData && userData.email) {
                 await sendEmailNotification(userData.email, targetRoom.room_number, totalAmount, Number(month))
-                alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จ และส่งอีเมลแจ้งเตือนเรียบร้อย! 🚀`)
+                toast.success(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จ และส่งอีเมลแจ้งเตือนเรียบร้อย 🚀`)
             } else {
-                alert(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จแล้ว! (ไม่พบอีเมลผู้เช่า) 🚀`)
+                toast.success(`สร้างบิลห้อง ${targetRoom.room_number} สำเร็จแล้ว (ไม่พบอีเมลผู้เช่า) 🚀`)
             }
 
             setWaterPrev(""); setWaterCurr(""); setElectricPrev(""); setElectricCurr(""); setSelectedRoomId("")
             fetchWaitingInvoices()
         } catch (error: any) {
-            alert("ไม่สามารถสร้างบิลได้: " + error.message)
+            toast.error("ไม่สามารถสร้างบิลได้: " + error.message)
         } finally {
             setCreating(false)
         }
@@ -182,15 +199,11 @@ export default function LandlordPage() {
     }, [session, status, router])
 
     if (loading) {
-        return (
-            <div className="min-h-screen bg-gray-100 flex items-center justify-center text-black">
-                <p className="font-semibold text-gray-500">กำลังตรวจสอบข้อมูลสิทธิ์แอดมิน...</p>
-            </div>
-        )
+        return <LoadingScreen message="กำลังตรวจสอบข้อมูลสิทธิ์แอดมิน..." />
     }
 
     return (
-        <div className="min-h-screen bg-gray-100 p-6 text-black">
+        <div className="min-h-screen p-6">
             <div className="mx-auto max-w-5xl">
                 {/* 🧩 ประกอบชิ้นส่วนแผงควบคุมแอดมิน */}
                 <AdminHeader onLogout={handleAdminLogout} />
