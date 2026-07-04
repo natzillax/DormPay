@@ -218,8 +218,10 @@ export default function LandlordPage() {
             // ⏳ ถ้าระบบ Next-Auth กำลังดึงเซสชันอยู่ ให้รอก่อน
             if (status === "loading") return
 
+            const userRole = (session?.user as any)?.role
+
             // เช็คจาก Session หลักของระบบก่อน
-            if (!session || session.user?.role !== "ADMIN") {
+            if (!session || userRole !== "ADMIN") {
 
                 // 🔄 แผนสำรอง (Fallback): เช็คจาก LocalStorage ย้อนกลับไปตรวจในตาราง users เผื่อค่าดีเลย์
                 const savedEmail = localStorage.getItem("admin_email")
