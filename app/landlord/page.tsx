@@ -82,20 +82,25 @@ export default function LandlordPage() {
         const { data, error } = await supabase
             .from("repair_requests")
             .select(`
-            id,
-            title,
-            description,
-            status,
-            created_at,
-            rooms:room_id ( room_number ) 
-        `) // 🎯 ระบุชัดเจนว่าใช้ room_id ในการ Map หาตาราง rooms
-            .order("created_at", { ascending: false })
+                id,
+                title,
+                description,
+                status,
+                created_at,
+                room_id,
+                user_id,
+                rooms (
+                    room_number
+                ),
+                users (
+                    name
+                )
+            `) // 🎯 ไฮไลท์เด็ด: สั่งดึงห้อง (rooms) และ ชื่อผู้เช่า (users) ผ่าน Foreign Key
+            .order("created_at", { ascending: false });
 
-        if (!error && data) {
-            setRepairRequests(data)
-        } else {
-            console.error("Error fetching repairs:", error?.message)
-        }
+        if (error) throw error;
+        // ดึงข้อมูลสำเร็จ ยัดใส่ State ของฝั่งแอดมินตามปกติ
+        setRepairRequests(data);
     }
 
     const handleApprove = async (invoiceId: string) => {

@@ -24,9 +24,9 @@ export default function TenantDashboardPage() {
     const [tenantName, setTenantName] = useState<string>("กำลังโหลด...")
     const [roomId, setRoomId] = useState<string | null>(null)
     
-    // 🎯 แก้ไขจากเก็บใบเดียว เป็นเก็บเป็น Array ของบิลค้างชำระทั้งหมด
+    // 🎯 เก็บบิลค้างชำระทั้งหมดแยกเป็น Array เพื่อสลับฝั่ง UI ได้
     const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]) 
-    const [selectedInvoiceIndex, setSelectedInvoiceIndex] = useState<number>(0) // สเตทรอเลือกดูบิลเดือนที่ต้องการ
+    const [selectedInvoiceIndex, setSelectedInvoiceIndex] = useState<number>(0)
     
     const [paidInvoices, setPaidInvoices] = useState<any[]>([]) 
     const [loading, setLoading] = useState(true)
@@ -38,7 +38,7 @@ export default function TenantDashboardPage() {
     const [repairDesc, setRepairDesc] = useState("")
     const [submittingRepair, setSubmittingRepair] = useState(false)
 
-    // บิลใบที่กำลังเลือกดูอยู่ปัจจุบัน
+    // บิลใบที่ผู้เช่าเลือกเปิดดูรายละเอียดอยู่ปัจจุบัน
     const currentActiveInvoice = unpaidInvoices[selectedInvoiceIndex] || null
 
     const fetchInvoiceData = useCallback(async (userId: string) => {
@@ -64,21 +64,18 @@ export default function TenantDashboardPage() {
                 .from("invoices")
                 .select("*")
                 .eq("room_id", userData.room_id)
-                .order("year", { ascending: false }) // เรียงจากปี/เดือนล่าสุด
+                .order("year", { ascending: false })
                 .order("month", { ascending: false })
 
             if (currentError) throw currentError
 
             if (currentData) {
-                // 🎯 แยกบิลที่ยังไม่ได้จ่าย (PENDING และ WAITING) ออกมาทั้งหมด ไม่ใช่เอาแค่ใบเดียว
+                // 🎯 ฟิลเตอร์กรองแยกบิลที่ยังชำระไม่เสร็จสิ้นทั้งหมดออกเป็นชุดข้อมูล
                 const unpaids = currentData.filter(inv => inv.status === "PENDING" || inv.status === "WAITING")
                 setUnpaidInvoices(unpaids)
                 
-                // แยกบิลที่จ่ายเสร็จแล้ว
+                // แยกชุดประวัติบิลที่ชำระเรียบร้อยแล้วสำเร็จ
                 setPaidInvoices(currentData.filter(inv => inv.status === "PAID"))
-                
-                // รีเซ็ตให้แสดงผลบิลใบแรกสุดในลิสต์เป็นค่าเริ่มต้น
-                setSelectedInvoiceIndex(0)
             }
 
         } catch (error: any) {
@@ -90,7 +87,6 @@ export default function TenantDashboardPage() {
 
     const handleUploadSlip = async (e: React.FormEvent) => {
         e.preventDefault()
-        // 🎯 อัปโหลดสลิปอิงตามใบที่กำลังเลือกใช้งานอยู่ขณะนั้น
         if (!file || !currentActiveInvoice) return toast.error("กรุณาเลือกไฟล์สลิปก่อน")
 
         setUploading(true)
@@ -118,7 +114,10 @@ export default function TenantDashboardPage() {
 
             toast.success("อัปโหลดสลิปสำเร็จ! รอเจ้าของหอตรวจสอบนะ 🎉")
             setFile(null)
-            fetchInvoiceData(localStorage.getItem("tenant_user_id") || "")
+            
+            // ดึงข้อมูลใหม่หลังจากส่งสลิปเพื่ออัปเดตสเตทบน UI หน้าจอ
+            await fetchInvoiceData(localStorage.getItem("tenant_user_id") || "")
+            setSelectedInvoiceIndex(0)
 
         } catch (error: any) {
             toast.error("เกิดข้อผิดพลาดในการอัปโหลด: " + error.message)
@@ -136,6 +135,7 @@ export default function TenantDashboardPage() {
 
         setSubmittingRepair(true)
         try {
+            // 🎯 สั่ง Insert เฉพาะ room_id ข้อมูลจะสัมพันธ์กับตารางห้องพักโดยไม่จำกัดความซ้ำซ้อนของเลขห้อง
             const { error } = await supabase
                 .from("repair_requests")
                 .insert([{
@@ -192,10 +192,10 @@ export default function TenantDashboardPage() {
             <div className="mx-auto max-w-4xl space-y-6">
                 <TenantHeader tenantName={tenantName} onLogout={handleLogout} />
                 
-                {/* 🎯 ส่วนแถบเลือกเดือนกรณีที่มีบิลค้างจ่ายมากกว่า 1 ใบ */}
+                {/* แถบแจ้งเตือนเมื่อตรวจพบบิลสะสมค้างชำระมากกว่า 1 ใบ */}
                 {unpaidInvoices.length > 1 && (
                     <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
-                        <p className="text-sm font-bold text-amber-800 mb-2">⚠️ คุณมีบิลค้างชำระทั้งหมด {unpaidInvoices.length} ใบ กรุณาเลือกเดือนที่ต้องการจัดการ:</p>
+                        <p className="text-sm font-bold text-amber-800 mb-2">⚠️ คุณมีบิลที่ยังไม่ได้เคลียร์ยอดทั้งหมด {unpaidInvoices.length} ใบ เลือกเดือนที่ต้องการจัดการ:</p>
                         <div className="flex flex-wrap gap-2">
                             {unpaidInvoices.map((inv, idx) => (
                                 <button
@@ -208,8 +208,10 @@ export default function TenantDashboardPage() {
                                     }`}
                                 >
                                     📆 บิลเดือน {inv.month}/{inv.year} 
-                                    <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-800">
-                                        {inv.status === "WAITING" ? "รอตรวจสลิป" : "ค้างจ่าย"}
+                                    <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded ${
+                                        inv.status === "WAITING" ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"
+                                    }`}>
+                                        {inv.status === "WAITING" ? "รอตรวจสลิป" : "ค้างชำระ"}
                                     </span>
                                 </button>
                             ))}
@@ -217,9 +219,8 @@ export default function TenantDashboardPage() {
                     </div>
                 )}
 
-                {/* ส่วนจัดการบิลประจำเดือนฝั่งผู้เช่า */}
+                {/* บล็อกแสดงรายละเอียดหนี้และฟอร์มชำระเงินแนบไฟล์ */}
                 <div className="grid gap-6 md:grid-cols-2">
-                    {/* ส่งบิลใบที่เลือกทำงานปัจจุบันไปแสดงผล */}
                     <InvoiceDetail invoice={currentActiveInvoice} />
                     <PaymentForm 
                         invoice={currentActiveInvoice} 
@@ -229,7 +230,7 @@ export default function TenantDashboardPage() {
                     />
                 </div>
 
-                {/* 🛠️ ส่วนฟอร์มแจ้งซ่อม */}
+                {/* ส่วนกล่องฟอร์มสำหรับแจ้งซ่อมบำรุงรักษา */}
                 <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
                     <h2 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
                         🔧 แจ้งซ่อมและรายงานปัญหาภายในห้องพัก
