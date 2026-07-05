@@ -43,7 +43,7 @@ export default function AdminAssignTenantPage() {
                 ?.map((u) => u.room_id)
                 .filter((id) => id !== null) || []
 
-            // จัดการข้อมูลห้องพ้กเพื่อเอาไปเช็คใน UI
+            // จัดการข้อมูลห้องพักเพื่อเอาไปเช็คใน UI
             const mappedRooms = roomData.map((room) => ({
                 ...room,
                 isOccupied: occupiedRoomIds.includes(room.id) || room.status === "OCCUPIED"
@@ -51,11 +51,9 @@ export default function AdminAssignTenantPage() {
             setRooms(mappedRooms)
 
             // C. กรองหาผู้เช่าที่สมัครใหม่ (รอยืนยัน) สถานะเป็น PENDING และยังไม่มีห้องพัก
-            // 🎯 กรองโดยระบุอีเมลของแอดมิน/เจ้าของหอที่ต้องการซ่อนโดยตรง
-            const adminEmails = ["nantharat.sk@gmail.com", "landlord@dorm.com"]; // 🔥 เปลี่ยนเป็นอีเมลแอดมินของคุณตรงนี้ครับ
+            const adminEmails = ["nantharat.sk@gmail.com", "landlord@dorm.com"];
 
             const freshUsers = allUsers?.filter((u) => {
-                // ดึงคนที่ไม่มี room_id ผูกอยู่ (ไม่ว่าจะสถานะ PENDING หรือ ACTIVE) และไม่ใช่อีเมลแอดมิน
                 const isNewOrNoRoom = (!u.room_id) || u.status === "PENDING";
                 return isNewOrNoRoom && !adminEmails.includes(u.email);
             }) || []
@@ -81,6 +79,10 @@ export default function AdminAssignTenantPage() {
 
         setSubmitting(true)
         try {
+            // 🎯 ค้นหาข้อมูลผู้เช่าที่ถูกเลือกใน State เพื่อดึง "ชื่อ (name)" ออกมาใช้งาน
+            const targetUser = pendingUsers.find(u => u.id === selectedUser)
+            const tenantName = targetUser?.name || "ไม่ระบุชื่อ"
+
             // 1) อัปเดตผู้ใช้ในตาราง users ให้เอา room_id ไปใส่ และเปลี่ยนสถานะเป็น ACTIVE
             const { error: userUpdateError } = await supabase
                 .from("users")
@@ -92,10 +94,15 @@ export default function AdminAssignTenantPage() {
 
             if (userUpdateError) throw userUpdateError
 
-            // 2) อัปเดตสถานะของห้องพักในตาราง rooms ให้เป็น OCCUPIED เพื่อให้ตรงกับข้อมูลจริง
+            // 2) อัปเดตสถานะของห้องพักในตาราง rooms
+            // 🎯 เพิ่มฟิลด์ current_tenant_name ส่งชื่อผู้เช่าเข้าไปบันทึกคู่กันเรียบร้อยครับ
             const { error: roomUpdateError } = await supabase
                 .from("rooms")
-                .update({ status: "OCCUPIED" })
+                .update({ 
+                    status: "OCCUPIED",
+                    current_tenant_id: selectedUser,
+                    current_tenant_name: tenantName 
+                })
                 .eq("id", selectedRoom)
 
             if (roomUpdateError) throw roomUpdateError

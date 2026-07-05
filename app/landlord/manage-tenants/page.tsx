@@ -87,7 +87,9 @@ export default function ManageTenantsPage() {
       const { error: roomError } = await supabase
         .from("rooms")
         .update({
-          status: "VACANT"      
+          status: "VACANT",
+          current_tenant_id: null,
+    current_tenant_name: null // เคลียร์ชื่อออกตอนห้องว่าง      
         })
         .eq("id", roomId)
 
