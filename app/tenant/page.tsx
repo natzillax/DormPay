@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js"
 import { useToast } from "@/components/NotificationProvider"
 import LoadingScreen from "@/components/LoadingScreen"
 
-// 📦 Import ชิ้นส่วน UI ที่เราแยกออกมา
+// 📦 Import ชิ้นส่วน UI
 import TenantHeader from "./TenantHeader"
 import InvoiceDetail from "./InvoiceDetail"
 import PaymentForm from "./PaymentForm"
@@ -22,11 +22,24 @@ export default function TenantDashboardPage() {
     const router = useRouter()
     const toast = useToast()
     const [tenantName, setTenantName] = useState<string>("กำลังโหลด...")
-    const [invoice, setInvoice] = useState<any>(null) 
+    const [roomId, setRoomId] = useState<string | null>(null)
+    
+    // 🎯 แก้ไขจากเก็บใบเดียว เป็นเก็บเป็น Array ของบิลค้างชำระทั้งหมด
+    const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]) 
+    const [selectedInvoiceIndex, setSelectedInvoiceIndex] = useState<number>(0) // สเตทรอเลือกดูบิลเดือนที่ต้องการ
+    
     const [paidInvoices, setPaidInvoices] = useState<any[]>([]) 
     const [loading, setLoading] = useState(true)
     const [uploading, setUploading] = useState(false)
     const [file, setFile] = useState<File | null>(null)
+
+    // 🛠️ State สำหรับระบบแจ้งซ่อม
+    const [repairTitle, setRepairTitle] = useState("")
+    const [repairDesc, setRepairDesc] = useState("")
+    const [submittingRepair, setSubmittingRepair] = useState(false)
+
+    // บิลใบที่กำลังเลือกดูอยู่ปัจจุบัน
+    const currentActiveInvoice = unpaidInvoices[selectedInvoiceIndex] || null
 
     const fetchInvoiceData = useCallback(async (userId: string) => {
         setLoading(true)
@@ -39,9 +52,10 @@ export default function TenantDashboardPage() {
 
             if (userError) throw userError
             if (userData?.name) setTenantName(userData.name)
+            if (userData?.room_id) setRoomId(userData.room_id)
 
             if (!userData || !userData.room_id) {
-                setInvoice(null);
+                setUnpaidInvoices([]);
                 setPaidInvoices([]);
                 return;
             }
@@ -50,12 +64,22 @@ export default function TenantDashboardPage() {
                 .from("invoices")
                 .select("*")
                 .eq("room_id", userData.room_id)
-                .order("created_at", { ascending: false })
+                .order("year", { ascending: false }) // เรียงจากปี/เดือนล่าสุด
+                .order("month", { ascending: false })
 
             if (currentError) throw currentError
 
-            setInvoice(currentData?.find(inv => inv.status === "PENDING" || inv.status === "WAITING") || null)
-            setPaidInvoices(currentData?.filter(inv => inv.status === "PAID") || [])
+            if (currentData) {
+                // 🎯 แยกบิลที่ยังไม่ได้จ่าย (PENDING และ WAITING) ออกมาทั้งหมด ไม่ใช่เอาแค่ใบเดียว
+                const unpaids = currentData.filter(inv => inv.status === "PENDING" || inv.status === "WAITING")
+                setUnpaidInvoices(unpaids)
+                
+                // แยกบิลที่จ่ายเสร็จแล้ว
+                setPaidInvoices(currentData.filter(inv => inv.status === "PAID"))
+                
+                // รีเซ็ตให้แสดงผลบิลใบแรกสุดในลิสต์เป็นค่าเริ่มต้น
+                setSelectedInvoiceIndex(0)
+            }
 
         } catch (error: any) {
             console.error("❌ Error fetching billing data:", error.message)
@@ -66,12 +90,13 @@ export default function TenantDashboardPage() {
 
     const handleUploadSlip = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!file || !invoice) return toast.error("กรุณาเลือกไฟล์สลิปก่อน")
+        // 🎯 อัปโหลดสลิปอิงตามใบที่กำลังเลือกใช้งานอยู่ขณะนั้น
+        if (!file || !currentActiveInvoice) return toast.error("กรุณาเลือกไฟล์สลิปก่อน")
 
         setUploading(true)
         try {
             const fileExt = file.name.split('.').pop()
-            const fileName = `${invoice.id}-${Date.now()}.${fileExt}`
+            const fileName = `${currentActiveInvoice.id}-${Date.now()}.${fileExt}`
             const filePath = `slips/${fileName}`
 
             const { error: uploadError } = await supabase.storage
@@ -82,11 +107,11 @@ export default function TenantDashboardPage() {
 
             const { data: { publicUrl } } = supabase.storage.from("slips").getPublicUrl(filePath)
 
-            await supabase.from("invoices").update({ slip_url: publicUrl, status: "WAITING" }).eq("id", invoice.id)
+            await supabase.from("invoices").update({ slip_url: publicUrl, status: "WAITING" }).eq("id", currentActiveInvoice.id)
             await supabase.from("payments").insert([{
-                invoice_id: invoice.id,
+                invoice_id: currentActiveInvoice.id,
                 user_id: localStorage.getItem("tenant_user_id"), 
-                amount: invoice.total_amount, 
+                amount: currentActiveInvoice.total_amount, 
                 payment_method: "TRANSFER",   
                 slip_url: publicUrl           
             }])
@@ -99,6 +124,37 @@ export default function TenantDashboardPage() {
             toast.error("เกิดข้อผิดพลาดในการอัปโหลด: " + error.message)
         } finally {
             setUploading(false)
+        }
+    }
+
+    const handleCreateRepairRequest = async (e: React.FormEvent) => {
+        e.preventDefault()
+        const userId = localStorage.getItem("tenant_user_id")
+
+        if (!userId || !roomId) return toast.error("ไม่พบข้อมูลผู้เช่าหรือห้องพัก")
+        if (!repairTitle.trim() || !repairDesc.trim()) return toast.error("กรุณากรอกข้อมูลให้ครบถ้วน")
+
+        setSubmittingRepair(true)
+        try {
+            const { error } = await supabase
+                .from("repair_requests")
+                .insert([{
+                    room_id: roomId,
+                    user_id: userId,
+                    title: repairTitle,
+                    description: repairDesc,
+                    status: "PENDING"
+                }])
+
+            if (error) throw error
+
+            toast.success("ส่งข้อมูลแจ้งซ่อมเรียบร้อย แอดมินจะดำเนินการตรวจสอบให้ครับ 🛠️")
+            setRepairTitle("")
+            setRepairDesc("")
+        } catch (error: any) {
+            toast.error("ไม่สามารถแจ้งซ่อมได้: " + error.message)
+        } finally {
+            setSubmittingRepair(false)
         }
     }
 
@@ -132,21 +188,86 @@ export default function TenantDashboardPage() {
     }
 
     return (
-        <div className="min-h-screen p-6">
-            <div className="mx-auto max-w-4xl">
-                {/* 🧩 ประกอบชิ้นส่วนต่าง ๆ เข้าด้วยกัน */}
+        <div className="min-h-screen p-6 bg-gray-50">
+            <div className="mx-auto max-w-4xl space-y-6">
                 <TenantHeader tenantName={tenantName} onLogout={handleLogout} />
                 
+                {/* 🎯 ส่วนแถบเลือกเดือนกรณีที่มีบิลค้างจ่ายมากกว่า 1 ใบ */}
+                {unpaidInvoices.length > 1 && (
+                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 shadow-sm">
+                        <p className="text-sm font-bold text-amber-800 mb-2">⚠️ คุณมีบิลค้างชำระทั้งหมด {unpaidInvoices.length} ใบ กรุณาเลือกเดือนที่ต้องการจัดการ:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {unpaidInvoices.map((inv, idx) => (
+                                <button
+                                    key={inv.id}
+                                    onClick={() => setSelectedInvoiceIndex(idx)}
+                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+                                        selectedInvoiceIndex === idx
+                                            ? "bg-amber-600 text-white shadow"
+                                            : "bg-white text-gray-700 border hover:bg-gray-100"
+                                    }`}
+                                >
+                                    📆 บิลเดือน {inv.month}/{inv.year} 
+                                    <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-800">
+                                        {inv.status === "WAITING" ? "รอตรวจสลิป" : "ค้างจ่าย"}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ส่วนจัดการบิลประจำเดือนฝั่งผู้เช่า */}
                 <div className="grid gap-6 md:grid-cols-2">
-                    <InvoiceDetail invoice={invoice} />
+                    {/* ส่งบิลใบที่เลือกทำงานปัจจุบันไปแสดงผล */}
+                    <InvoiceDetail invoice={currentActiveInvoice} />
                     <PaymentForm 
-                        invoice={invoice} 
+                        invoice={currentActiveInvoice} 
                         uploading={uploading} 
                         onFileChange={setFile} 
                         onSubmit={handleUploadSlip} 
                     />
                 </div>
 
+                {/* 🛠️ ส่วนฟอร์มแจ้งซ่อม */}
+                <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
+                    <h2 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
+                        🔧 แจ้งซ่อมและรายงานปัญหาภายในห้องพัก
+                    </h2>
+                    <form onSubmit={handleCreateRepairRequest} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-600 mb-1">หัวข้อปัญหา (เช่น ท่อน้ำอุดตัน, ไฟดับ)</label>
+                            <input 
+                                type="text"
+                                value={repairTitle}
+                                onChange={(e) => setRepairTitle(e.target.value)}
+                                placeholder="พิมพ์หัวข้อปัญหาที่พบ..."
+                                className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-600 mb-1">รายละเอียดสิ่งของชำรุดเพิ่มเติม</label>
+                            <textarea 
+                                value={repairDesc}
+                                onChange={(e) => setRepairDesc(e.target.value)}
+                                placeholder="ระบุรายละเอียดเพิ่มเติม..."
+                                rows={3}
+                                className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                                required
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={submittingRepair}
+                            className="w-full rounded-lg bg-amber-500 py-2.5 text-sm font-bold text-white hover:bg-amber-600 transition shadow-sm disabled:bg-gray-400"
+                        >
+                            {submittingRepair ? "กำลังส่งข้อมูล..." : "🚀 ส่งคำขอแจ้งซ่อม"}
+                        </button>
+                    </form>
+                </div>
+
+                {/* ส่วนประวัติบิลย้อนหลัง */}
                 <InvoiceHistory paidInvoices={paidInvoices} />
             </div>
         </div>

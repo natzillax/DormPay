@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useToast, useConfirm } from "@/components/NotificationProvider"
 import LoadingScreen from "@/components/LoadingScreen"
+import RepairRequestsTable from "./RepairRequestsTable" // 🛠️ นำเข้าตารางแสดงงานแจ้งซ่อม
 
 import AdminHeader from "./AdminHeader"
 import CreateInvoiceForm from "./CreateInvoiceForm"
@@ -23,6 +24,9 @@ export default function LandlordPage() {
     const { data: session, status } = useSession()
     const toast = useToast()
     const confirm = useConfirm()
+
+    // 🛠️ State สำหรับเก็บรายการแจ้งซ่อมจากผู้เช่า
+    const [repairRequests, setRepairRequests] = useState<any[]>([])
 
     const [invoices, setInvoices] = useState<any[]>([])
     const [pendingInvoices, setPendingInvoices] = useState<any[]>([]) // 🎯 2. State สำหรับบิลค้างชำระ
@@ -71,6 +75,27 @@ export default function LandlordPage() {
             .order("room_number", { ascending: true })
 
         if (!error && data) setRooms(data)
+    }
+
+    // 🛠️ ฟังก์ชันดึงข้อมูลการแจ้งซ่อมทั้งหมดจากผู้เช่า
+    const fetchRepairRequests = async () => {
+        const { data, error } = await supabase
+            .from("repair_requests")
+            .select(`
+            id,
+            title,
+            description,
+            status,
+            created_at,
+            rooms:room_id ( room_number ) 
+        `) // 🎯 ระบุชัดเจนว่าใช้ room_id ในการ Map หาตาราง rooms
+            .order("created_at", { ascending: false })
+
+        if (!error && data) {
+            setRepairRequests(data)
+        } else {
+            console.error("Error fetching repairs:", error?.message)
+        }
     }
 
     const handleApprove = async (invoiceId: string) => {
@@ -140,6 +165,23 @@ export default function LandlordPage() {
         } finally {
             setUpdatingId(null)
         }
+    }
+
+    // 🛠️ ฟังก์ชันสำหรับแอดมินอัปเดตสถานะงานแจ้งซ่อม
+    const handleUpdateRepairStatus = async (repairId: string, nextStatus: string) => {
+        setUpdatingId(repairId)
+        const { error } = await supabase
+            .from("repair_requests")
+            .update({ status: nextStatus })
+            .eq("id", repairId)
+
+        if (!error) {
+            toast.success("อัปเดตสถานะงานแจ้งซ่อมเรียบร้อยแล้ว! ⚙️")
+            fetchRepairRequests() // โหลดรายการแจ้งซ่อมใหม่
+        } else {
+            toast.error("เกิดข้อผิดพลาดในการอัปเดตสถานะ: " + error.message)
+        }
+        setUpdatingId(null)
     }
 
     // 🧮 ส่วนคำนวณราคา Real-time
@@ -236,15 +278,16 @@ export default function LandlordPage() {
                 if (savedEmail) {
                     const { data: userData } = await supabase.from("users").select("role").eq("email", savedEmail).maybeSingle()
                     if (userData?.role === "ADMIN") {
-                        Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms()]).then(() => setLoading(false))
+                        // 🛠️ โหลดข้อมูลรายการแจ้งซ่อมเพิ่มเข้ามาด้วย
+                        Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms(), fetchRepairRequests()]).then(() => setLoading(false))
                         return
                     }
                 }
                 router.replace("/admin-login")
                 return
             }
-            // 🎯 โหลดข้อมูลทั้ง 3 ส่วนพร้อมกันตอนเข้าหน้าแรก
-            Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms()]).then(() => setLoading(false))
+            // 🎯 โหลดข้อมูลทั้งหมด 4 ส่วนพร้อมกันตอนเข้าหน้าแรก
+            Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms(), fetchRepairRequests()]).then(() => setLoading(false))
         }
         checkCurrentAdmin()
     }, [session, status, router])
@@ -254,7 +297,7 @@ export default function LandlordPage() {
     }
 
     return (
-        <div className="min-h-screen p-6">
+        <div className="min-h-screen p-6 bg-gray-50">
             <div className="mx-auto max-w-5xl space-y-6"> {/* 🎯 เพิ่ม gap ระยะห่างระหว่างเซกชัน */}
                 <AdminHeader onLogout={handleAdminLogout} />
 
@@ -274,10 +317,17 @@ export default function LandlordPage() {
                 />
 
                 {/* 🎯 ตารางที่ 2: บิลค้างชำระทั้งหมดประจำเดือน (มีปุ่มลบอยู่ที่นี่) */}
-                <PendingInvoicesTable 
-                    invoices={pendingInvoices} 
-                    updatingId={updatingId} 
-                    onDelete={handleDeleteInvoice} 
+                <PendingInvoicesTable
+                    invoices={pendingInvoices}
+                    updatingId={updatingId}
+                    onDelete={handleDeleteInvoice}
+                />
+
+                {/* 🛠️ ตารางที่ 3: ระบบจัดการงานแจ้งซ่อมจากผู้เช่า (เพิ่มมาใหม่ล่างสุด) */}
+                <RepairRequestsTable
+                    repairs={repairRequests}
+                    updatingId={updatingId}
+                    onUpdateStatus={handleUpdateRepairStatus}
                 />
             </div>
         </div>
