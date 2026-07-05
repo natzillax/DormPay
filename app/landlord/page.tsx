@@ -145,6 +145,13 @@ export default function LandlordPage() {
                 room_price: rPrice,
                 water_price: wPrice,
                 electric_price: ePrice,
+
+                // บันทึกเลขมิเตอร์จริงลงฐานข้อมูล
+                water_prev: Number(waterPrev),
+                water_curr: Number(waterCurr),
+                electric_prev: Number(electricPrev),
+                electric_curr: Number(electricCurr),
+
                 total_amount: totalAmount,
                 month: Number(month),
                 year: Number(year),
@@ -207,8 +214,8 @@ export default function LandlordPage() {
             <div className="mx-auto max-w-5xl">
                 {/* 🧩 ประกอบชิ้นส่วนแผงควบคุมแอดมิน */}
                 <AdminHeader onLogout={handleAdminLogout} />
-                
-                <CreateInvoiceForm 
+
+                <CreateInvoiceForm
                     rooms={rooms} selectedRoomId={selectedRoomId} setSelectedRoomId={setSelectedRoomId}
                     month={month} setMonth={setMonth} year={year} setYear={setYear}
                     waterPrev={waterPrev} setWaterPrev={setWaterPrev} waterCurr={waterCurr} setWaterCurr={setWaterCurr}
@@ -217,9 +224,9 @@ export default function LandlordPage() {
                     rPrice={rPrice} waterUnits={waterUnits} wPrice={wPrice} electricUnits={electricUnits} ePrice={ePrice} totalAmount={totalAmount}
                 />
 
-                <WaitingInvoicesTable 
-                    invoices={invoices} updatingId={updatingId} 
-                    onApprove={handleApprove} onReject={handleReject} 
+                <WaitingInvoicesTable
+                    invoices={invoices} updatingId={updatingId}
+                    onApprove={handleApprove} onReject={handleReject}
                 />
             </div>
         </div>
