@@ -6,9 +6,10 @@ interface WaitingInvoicesTableProps {
     updatingId: string | null;
     onApprove: (id: string) => void;
     onReject: (id: string) => void;
+    onDelete: (id: string) => void; // 🎯 เพิ่ม Props สำหรับลบใบแจ้งหนี้
 }
 
-export default function WaitingInvoicesTable({ invoices, updatingId, onApprove, onReject }: WaitingInvoicesTableProps) {
+export default function WaitingInvoicesTable({ invoices, updatingId, onApprove, onReject, onDelete }: WaitingInvoicesTableProps) {
     return (
         <div className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
             <h2 className="text-lg font-bold mb-4 text-gray-700 flex items-center gap-2">
@@ -34,7 +35,9 @@ export default function WaitingInvoicesTable({ invoices, updatingId, onApprove, 
                         <tbody className="divide-y text-sm">
                             {invoices.map((inv) => (
                                 <tr key={inv.id} className="hover:bg-gray-50 transition">
-                                    <td className="p-3 font-bold text-blue-600">ห้อง {inv.rooms?.room_number || "ไม่ระบุ"}</td>
+                                    <td className="p-3 font-bold text-blue-600">
+                                        ห้อง {inv.room_number || inv.rooms?.room_number || "ไม่ระบุ"}
+                                    </td>
                                     <td className="p-3 text-gray-600">{inv.month}/{inv.year}</td>
                                     <td className="p-3 font-semibold text-gray-800">฿{inv.total_amount.toLocaleString()}</td>
                                     <td className="p-3">
@@ -65,6 +68,16 @@ export default function WaitingInvoicesTable({ invoices, updatingId, onApprove, 
                                             className="rounded-lg bg-red-500 px-3 py-1.5 font-bold text-white hover:bg-red-600 transition shadow-sm disabled:bg-gray-400 text-xs"
                                         >
                                             {updatingId === inv.id ? "รอ..." : "❌ ปฏิเสธ"}
+                                        </button>
+                                        
+                                        {/* 🗑️ ปุ่มลบบิลกรณีที่แอดมินคีย์ข้อมูลตัวเลขผิดพลาด */}
+                                        <button
+                                            onClick={() => onDelete(inv.id)}
+                                            disabled={updatingId === inv.id}
+                                            title="ลบใบแจ้งหนี้ใบนี้"
+                                            className="rounded-lg bg-gray-100 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 transition border border-gray-200 hover:border-red-200 disabled:opacity-50 text-xs"
+                                        >
+                                            🗑️ ลบ
                                         </button>
                                     </td>
                                 </tr>

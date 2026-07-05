@@ -100,6 +100,34 @@ export default function LandlordPage() {
         setUpdatingId(null)
     }
 
+    // 🗑️ ฟังก์ชันลบใบแจ้งหนี้ (กรณีคีย์ข้อมูลผิดพลาด)
+    const handleDeleteInvoice = async (invoiceId: string) => {
+        const ok = await confirm({
+            title: "ลบใบแจ้งหนี้ใบนี้?",
+            message: "คุณต้องการลบใบแจ้งหนี้นี้ออกใช่หรือไม่? ข้อมูลทั้งหมดในบิลใบนี้จะหายไป (ใช้ในกรณีที่พิมพ์ตัวเลขผิด)",
+            confirmLabel: "ยืนยันการลบ",
+            tone: "danger",
+        })
+        if (!ok) return
+
+        setUpdatingId(invoiceId)
+        try {
+            const { error } = await supabase
+                .from("invoices")
+                .delete()
+                .eq("id", invoiceId)
+
+            if (error) throw error
+
+            toast.success("ลบใบแจ้งหนี้ที่ผิดพลาดสำเร็จแล้ว 🗑️")
+            fetchWaitingInvoices() // โหลดรายการในตารางใหม่
+        } catch (error: any) {
+            toast.error("ไม่สามารถลบใบแจ้งหนี้ได้: " + error.message)
+        } finally {
+            setUpdatingId(null)
+        }
+    }
+
     // 🧮 ส่วนคำนวณราคา Real-time
     const targetRoom = rooms.find(r => r.id === selectedRoomId)
     const rPrice = targetRoom ? Number(targetRoom.price) : 0
@@ -228,9 +256,11 @@ export default function LandlordPage() {
                     rPrice={rPrice} waterUnits={waterUnits} wPrice={wPrice} electricUnits={electricUnits} ePrice={ePrice} totalAmount={totalAmount}
                 />
 
+                {/* 🎯 ส่ง onDelete เข้าไปในตารางด้วย */}
                 <WaitingInvoicesTable
                     invoices={invoices} updatingId={updatingId}
                     onApprove={handleApprove} onReject={handleReject}
+                    onDelete={handleDeleteInvoice} 
                 />
             </div>
         </div>
