@@ -140,24 +140,28 @@ export default function LandlordPage() {
             const dueDate = new Date()
             dueDate.setDate(dueDate.getDate() + 7)
 
-            const { error } = await supabase.from("invoices").insert([{
-                room_id: selectedRoomId,
-                room_price: rPrice,
-                water_price: wPrice,
-                electric_price: ePrice,
+            // 🎯 ทำการ insert ข้อมูลใบแจ้งหนี้ใบใหม่
+            const { error } = await supabase
+                .from("invoices")
+                .insert([{
+                    room_id: selectedRoomId,
+                    room_number: targetRoom.room_number, // 🔥 เพิ่มบรรทัดนี้เพื่อบันทึกเลขห้องลงตาราง invoices ครับ
+                    room_price: rPrice,
+                    water_price: wPrice,
+                    electric_price: ePrice,
 
-                // บันทึกเลขมิเตอร์จริงลงฐานข้อมูล
-                water_prev: Number(waterPrev),
-                water_curr: Number(waterCurr),
-                electric_prev: Number(electricPrev),
-                electric_curr: Number(electricCurr),
+                    // บันทึกเลขมิเตอร์จริงลงฐานข้อมูล
+                    water_prev: Number(waterPrev),
+                    water_curr: Number(waterCurr),
+                    electric_prev: Number(electricPrev),
+                    electric_curr: Number(electricCurr),
 
-                total_amount: totalAmount,
-                month: Number(month),
-                year: Number(year),
-                status: "PENDING",
-                due_date: dueDate.toISOString(),
-            }])
+                    total_amount: totalAmount,
+                    month: Number(month),
+                    year: Number(year),
+                    status: "PENDING",
+                    due_date: dueDate.toISOString(),
+                }])
 
             if (error) throw error
 
