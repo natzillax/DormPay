@@ -8,10 +8,10 @@ import { useSession } from "next-auth/react"
 import { useToast, useConfirm } from "@/components/NotificationProvider"
 import LoadingScreen from "@/components/LoadingScreen"
 
-// 📦 Import ชิ้นส่วนย่อยที่เราแยกออกมา (Path เดียวกันในโฟลเดอร์ landlord)
 import AdminHeader from "./AdminHeader"
 import CreateInvoiceForm from "./CreateInvoiceForm"
 import WaitingInvoicesTable from "./WaitingInvoicesTable"
+import PendingInvoicesTable from "./PendingInvoicesTable" // 🎯 1. Import ตารางใหม่เข้ามา
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,6 +25,7 @@ export default function LandlordPage() {
     const confirm = useConfirm()
 
     const [invoices, setInvoices] = useState<any[]>([])
+    const [pendingInvoices, setPendingInvoices] = useState<any[]>([]) // 🎯 2. State สำหรับบิลค้างชำระ
     const [rooms, setRooms] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [updatingId, setUpdatingId] = useState<string | null>(null)
@@ -52,6 +53,17 @@ export default function LandlordPage() {
         if (!error && data) setInvoices(data)
     }
 
+    // 🎯 3. ฟังก์ชันดึงบิลที่ 'PENDING' (แอดมินพึ่งคีย์/ผู้เช่ายังไม่จ่าย)
+    const fetchPendingInvoices = async () => {
+        const { data, error } = await supabase
+            .from("invoices")
+            .select(`*, rooms ( room_number )`)
+            .eq("status", "PENDING")
+            .order("room_number", { ascending: true })
+
+        if (!error && data) setPendingInvoices(data)
+    }
+
     const fetchRooms = async () => {
         const { data, error } = await supabase
             .from("rooms")
@@ -74,6 +86,7 @@ export default function LandlordPage() {
         if (!error) {
             toast.success("อนุมัติยอดชำระเงินเรียบร้อยแล้ว 🎉")
             fetchWaitingInvoices()
+            fetchPendingInvoices() // รีเฟรชตารางบิลค้างชำระด้วย เผื่อมีผลเกี่ยวเนื่องกัน
         } else {
             toast.error("เกิดข้อผิดพลาดในการอนุมัติ: " + error.message)
         }
@@ -83,7 +96,7 @@ export default function LandlordPage() {
     const handleReject = async (invoiceId: string) => {
         const ok = await confirm({
             title: "ปฏิเสธสลิปนี้?",
-            message: "ผู้เช่าจะต้องอัปโหลดสลิปใหม่อีกครั้ง",
+            message: "ผู้เช่าจะต้องอัปโหลดสลิปใหม่อีกครั้ง และบิลนี้จะกลับไปสถานะค้างชำระ",
             confirmLabel: "ปฏิเสธสลิป",
             tone: "danger",
         })
@@ -92,19 +105,20 @@ export default function LandlordPage() {
         setUpdatingId(invoiceId)
         const { error } = await supabase.from("invoices").update({ status: "PENDING", slip_url: null }).eq("id", invoiceId)
         if (!error) {
-            toast.success("ปฏิเสธสลิปเรียบร้อย ระบบจะแจ้งผู้เช่าให้ส่งสลิปใหม่")
+            toast.success("ปฏิเสธสลิปเรียบร้อย บิลดีดกลับไปอยู่ตารางค้างชำระแล้ว")
             fetchWaitingInvoices()
+            fetchPendingInvoices() // โหลดข้อมูลใหม่เพื่อให้บิลไปโผล่ตารางล่าง
         } else {
             toast.error("เกิดข้อผิดพลาด: " + error.message)
         }
         setUpdatingId(null)
     }
 
-    // 🗑️ ฟังก์ชันลบใบแจ้งหนี้ (กรณีคีย์ข้อมูลผิดพลาด)
+    // 🎯 4. ฟังก์ชันลบใบแจ้งหนี้ (สำหรับบิล PENDING ที่แอดมินคีย์ผิด)
     const handleDeleteInvoice = async (invoiceId: string) => {
         const ok = await confirm({
             title: "ลบใบแจ้งหนี้ใบนี้?",
-            message: "คุณต้องการลบใบแจ้งหนี้นี้ออกใช่หรือไม่? ข้อมูลทั้งหมดในบิลใบนี้จะหายไป (ใช้ในกรณีที่พิมพ์ตัวเลขผิด)",
+            message: "คุณต้องการลบใบแจ้งหนี้นี้ออกใช่หรือไม่? ข้อมูลจะหายไปถาวร (ใช้ในกรณีที่พิมพ์ตัวเลขผิดและผู้เช่ายังไม่ได้จ่าย)",
             confirmLabel: "ยืนยันการลบ",
             tone: "danger",
         })
@@ -120,7 +134,7 @@ export default function LandlordPage() {
             if (error) throw error
 
             toast.success("ลบใบแจ้งหนี้ที่ผิดพลาดสำเร็จแล้ว 🗑️")
-            fetchWaitingInvoices() // โหลดรายการในตารางใหม่
+            fetchPendingInvoices() // โหลดตารางล่างใหม่
         } catch (error: any) {
             toast.error("ไม่สามารถลบใบแจ้งหนี้ได้: " + error.message)
         } finally {
@@ -168,22 +182,18 @@ export default function LandlordPage() {
             const dueDate = new Date()
             dueDate.setDate(dueDate.getDate() + 7)
 
-            // 🎯 ทำการ insert ข้อมูลใบแจ้งหนี้ใบใหม่
             const { error } = await supabase
                 .from("invoices")
                 .insert([{
                     room_id: selectedRoomId,
-                    room_number: targetRoom.room_number, // 🔥 เพิ่มบรรทัดนี้เพื่อบันทึกเลขห้องลงตาราง invoices ครับ
+                    room_number: targetRoom.room_number,
                     room_price: rPrice,
                     water_price: wPrice,
                     electric_price: ePrice,
-
-                    // บันทึกเลขมิเตอร์จริงลงฐานข้อมูล
                     water_prev: Number(waterPrev),
                     water_curr: Number(waterCurr),
                     electric_prev: Number(electricPrev),
                     electric_curr: Number(electricCurr),
-
                     total_amount: totalAmount,
                     month: Number(month),
                     year: Number(year),
@@ -202,6 +212,7 @@ export default function LandlordPage() {
 
             setWaterPrev(""); setWaterCurr(""); setElectricPrev(""); setElectricCurr(""); setSelectedRoomId("")
             fetchWaitingInvoices()
+            fetchPendingInvoices() // 🎯 โหลดตารางใหม่หลังสร้างบิลเสร็จ บิลจะวิ่งไปอยู่ตารางล่างทันที
         } catch (error: any) {
             toast.error("ไม่สามารถสร้างบิลได้: " + error.message)
         } finally {
@@ -225,14 +236,15 @@ export default function LandlordPage() {
                 if (savedEmail) {
                     const { data: userData } = await supabase.from("users").select("role").eq("email", savedEmail).maybeSingle()
                     if (userData?.role === "ADMIN") {
-                        Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
+                        Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms()]).then(() => setLoading(false))
                         return
                     }
                 }
                 router.replace("/admin-login")
                 return
             }
-            Promise.all([fetchWaitingInvoices(), fetchRooms()]).then(() => setLoading(false))
+            // 🎯 โหลดข้อมูลทั้ง 3 ส่วนพร้อมกันตอนเข้าหน้าแรก
+            Promise.all([fetchWaitingInvoices(), fetchPendingInvoices(), fetchRooms()]).then(() => setLoading(false))
         }
         checkCurrentAdmin()
     }, [session, status, router])
@@ -243,8 +255,7 @@ export default function LandlordPage() {
 
     return (
         <div className="min-h-screen p-6">
-            <div className="mx-auto max-w-5xl">
-                {/* 🧩 ประกอบชิ้นส่วนแผงควบคุมแอดมิน */}
+            <div className="mx-auto max-w-5xl space-y-6"> {/* 🎯 เพิ่ม gap ระยะห่างระหว่างเซกชัน */}
                 <AdminHeader onLogout={handleAdminLogout} />
 
                 <CreateInvoiceForm
@@ -256,10 +267,16 @@ export default function LandlordPage() {
                     rPrice={rPrice} waterUnits={waterUnits} wPrice={wPrice} electricUnits={electricUnits} ePrice={ePrice} totalAmount={totalAmount}
                 />
 
-                {/* 🎯 ส่ง onDelete เข้าไปในตารางด้วย */}
+                {/* ตารางที่ 1: รอตรวจสลิป (ไม่มีปุ่มลบแล้ว) */}
                 <WaitingInvoicesTable
                     invoices={invoices} updatingId={updatingId}
                     onApprove={handleApprove} onReject={handleReject}
+                />
+
+                {/* 🎯 ตารางที่ 2: บิลค้างชำระทั้งหมดประจำเดือน (มีปุ่มลบอยู่ที่นี่) */}
+                <PendingInvoicesTable 
+                    invoices={pendingInvoices} 
+                    updatingId={updatingId} 
                     onDelete={handleDeleteInvoice} 
                 />
             </div>
