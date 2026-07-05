@@ -188,7 +188,7 @@ export default function TenantDashboardPage() {
     }
 
     return (
-        <div className="min-h-screen p-6 bg-gray-50">
+        <div className="min-h-screen p-6 bg-gradient-to-tr from-purple-200 via-purple-100 to-pink-100">
             <div className="mx-auto max-w-4xl space-y-6">
                 <TenantHeader tenantName={tenantName} onLogout={handleLogout} />
                 

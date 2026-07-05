@@ -302,7 +302,7 @@ export default function LandlordPage() {
     }
 
     return (
-        <div className="min-h-screen p-6 bg-gray-50">
+        <div className="min-h-screen p-6 bg-gradient-to-tr from-purple-200 via-purple-100 to-pink-100">
             <div className="mx-auto max-w-5xl space-y-6"> {/* 🎯 เพิ่ม gap ระยะห่างระหว่างเซกชัน */}
                 <AdminHeader onLogout={handleAdminLogout} />
 
